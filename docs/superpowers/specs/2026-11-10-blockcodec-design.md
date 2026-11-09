@@ -172,8 +172,14 @@ This is the largest functional change and the one with the most risk.
 `init_compress` sets `cols = img.cols * img.channels()`, so a colour image is
 treated as one wide row of interleaved samples. The block model assumes a
 spatial neighbourhood, so a block can straddle a pixel boundary and the
-"corner colours" are misaligned. The GUI offers a colour option that
-produces a technically encoded but semantically meaningless result.
+"corner colours" are misaligned. Worse, `RBlock` indexes the image with
+`img.at<uchar>(i, j)` for `j` up to the flattened width, which reads past the
+end of each row, and `result` is allocated with that same flattened width, so
+a 512x512 colour image decodes to a 1536x512 greyscale image.
+
+The colour path is therefore **unsafe**, not merely imprecise: it performs an
+out-of-bounds read and produces a mis-sized result. The GUI offers a colour
+option that reaches it.
 
 ### 6.2 Design
 
@@ -278,23 +284,48 @@ documented"), which landed before this refactor began:
 
 **Still outstanding**, and part of this work:
 
-6. **Gap field width can desynchronise the stream** — the width `b` of the
-   gap field is recomputed from the decoder's current position
-   (`cols - col - 1`). An encoder and a decoder that disagree about the
-   position disagree about the width, and the stream desynchronises. This is
-   the most likely source of incompatibility between implementations.
-7. **`isColorful` is inferred, not stored** — the legacy decoder guesses
-   colour from `cols > rows`, which is wrong for any landscape image. The new
-   container stores the channel count explicitly.
+6. **Colour images read out of bounds.** `init_compress` sets
+   `cols = img.cols * img.channels()`, so a colour image is treated as one
+   wide row of interleaved samples. `RBlock` then indexes it with
+   `img.at<uchar>(i, j)` for `j` up to the flattened width, which reads past
+   the end of each row. `result` is allocated as
+   `cv::Mat::zeros(rows, cols, CV_8UC1)`, so a 512x512 colour image decodes
+   to a 1536x512 greyscale image. The GUI exposes a colour option that
+   therefore produces a mis-sized, out-of-bounds result rather than a
+   merely imperfect one. **The colour path must be treated as unsafe, not
+   merely imprecise.**
+7. **`isColorful` is inferred, not stored** — the decoder guesses colour
+   from `cols > rows`, which is wrong for any image wider than it is tall.
+   A 256x128 greyscale image is reported as colour. The existing test images
+   are all square, so this has never surfaced. The new container stores the
+   channel count explicitly, and a landscape-greyscale regression test is
+   added.
 8. **No end marker in the payload** — a truncated file decoded to a partial
    image without error. The new format validates the payload length.
-9. **The metrics are wrong** — see section 6.3. `getRate()` still returns
-   bytes per pixel while being documented as bits per pixel, and the VS
-   variant double-counts the channel factor.
-10. **The GUI leaked its sub-windows** and dereferenced uninitialised
+9. **The metrics are ambiguous** — see section 6.3. Bits, bytes and the
+   channel factor are conflated.
+10. **`Bits::write` shifts past the width of `int`** — `info & (1 << i)` is
+    undefined behaviour for `i == 31`, and `getDepth()` may return 64, so
+    `write(value, 64)` would evaluate `1 << 63`. The new bit writer uses
+    `std::uint64_t` and shifts within the type's width.
+11. **The GUI leaked its sub-windows** and dereferenced uninitialised
     `Compress_gray` pointers in their destructors. **Fixed** in `a2b975e`.
-11. **`operatorsignals.cpp` was both compiled separately and `#include`d**,
+12. **`operatorsignals.cpp` was both compiled separately and `#include`d**,
     producing duplicate symbols. **Fixed** in `a2b975e`.
+
+### A note on the gap field width
+
+The width `b` of the gap field is recomputed from the decoder's current
+position (`cols - col - !isNull`). This looks like a desynchronisation
+hazard, but it is not: the encoder and the decoder advance their positions
+by the same rule, so both compute the same width at every step, and an
+enumeration over all column counts finds no mismatch. The legacy format is
+therefore self-consistent for a single implementation.
+
+The new format nevertheless transmits the width explicitly. That removes the
+implicit coupling between the two sides, which is what makes the format
+hard to reimplement — the reference vector exists precisely because the
+format's rules are easy to get subtly wrong.
 
 ## 9. Applications
 
@@ -352,6 +383,7 @@ GoogleTest, fetched with `FetchContent`.
 | Round trip | Greyscale and colour: dimensions and channel count preserved, PSNR above a floor, block count consistent |
 | Container | header serialisation round trip, magic and version validation |
 | Robustness | Truncated files, wrong magic, wrong version, absurd dimensions: must throw, never crash |
+| Landscape greyscale | A 256x128 greyscale image must round-trip with `channels == 1`. The legacy decoder inferred colour from `cols > rows` and misreported every image wider than it is tall; the existing test images are all square, so this case was never covered. |
 | Fuzzing | Random bytes and truncations of a valid file: must fail cleanly, no undefined behaviour |
 | Metrics | BPP, CR and PSNR checked against hand-computed values for known inputs |
 
@@ -420,13 +452,21 @@ licence and the README.
 
 1. Rename the GitHub repository to `blockcodec`. GitHub redirects the old URL
    automatically, so **no history rewrite and no force-push are required**.
+   The repository is currently `ZajacMo/OpenCV-Image-Processing-and-Compression-Tool-Qt`
+   (it was renamed from `...-Tool` and the local `origin` still holds the
+   older name; GitHub follows the redirect, but the URL is updated locally
+   as well).
 2. Fetch the VS repository and merge with `--allow-unrelated-histories`, so
    its single commit enters the main history. Its original sources are kept
    under `legacy/vs-console/` for reference before being superseded by the
    new CLI.
 3. Commit the CLion prototype (currently zero commits, no remote, and
    therefore at risk of loss) under `apps/prototype/`, with a `PROTOTYPE.md`
-   explaining how its functions correspond to the new implementation.
+   explaining how its functions correspond to the new implementation. Its
+   `cmake-build-debug/` directory (353 KB of CMake cache and object files)
+   is deleted before the import, and `cmake-build-debug/` is added to
+   `.gitignore` — the current ignore rules cover `build/` and `build-*/` but
+   not CLion's default output directory name.
 4. Land the refactor as a distinct, well-described commit.
 
 The VS repository's remote is left in place and archived after the merge.
