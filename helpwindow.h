@@ -17,9 +17,9 @@ public:
     ~HelpWindow();
 
 signals:
-    void returnmain();/*发出回到主界面的信号*/
-    void touncompress();/*发出去解压缩界面的信号*/
-    void tocompress();/*发出去压缩界面的信号*/
+    void returnmain();/* Emitted to return to the main window */
+    void touncompress();/* Emitted to open the decompression window */
+    void tocompress();/* Emitted to open the compression window */
 
 
 private:

@@ -1,0 +1,79 @@
+# Build output
+build/
+build-*/
+out/
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.exp
+*.idb
+
+# Qt / CMake generated
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+ui_*.cpp
+.qmake.stash
+Makefile
+Makefile.*
+CMakeLists.txt.user
+CMakeSettings.json
+*.pro.user
+*.pro.user.*
+!*.pro.user.template
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+compile_commands.json
+
+# Qt / IDE settings
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.ntvs*
+*.njsproj
+*.sln.docstates
+*.VC.db
+*.VC.opendb
+*.qmlc
+*.jsc
+
+# Compressed codec output (.nam)
+*.nam
+# ...but reference test vectors are versioned on purpose.
+!tests/vectors/*.nam
+
+# Sample / scratch output
+result.nam
+compressed.nam
+*.bmp.tmp
+desktop.ini
+Thumbs.db
+.DS_Store
+$RECYCLE.BIN/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*.old
+*~
+
+# Python / tooling caches (used by the vector-generation script)
+__pycache__/
+*.pyc
+.pytest_cache/

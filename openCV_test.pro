@@ -32,7 +32,8 @@ HEADERS += \
     Bits.h\
     Block.h\
     RBlock.h\
-    Compress_gray.h
+    Compress_gray.h\
+    operatorsignals.h
 
 FORMS += \
     compresswindow.ui \

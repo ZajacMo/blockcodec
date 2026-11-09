@@ -2,6 +2,7 @@
 #include <fstream>
 #include <string.h>
 #include <cmath>
+#include <stdexcept>
 
 Bits::Bits() {
     bits.emplace_back(0);
@@ -11,27 +12,49 @@ Bits::Bits() {
     loadedInfo = nullptr;
 }
 
-//读取文件内容初始化Bits类(解压时)
+// Load a file and initialise the Bits object (used when decompressing)
 void Bits::init(const std::string& filename, const int& size) {
     std::ifstream in(filename, std::ios::binary | std::ios::in);
-    if(loadedInfo)
-        delete loadedInfo;
-    loadedInfo = new char[pow(1024, size) * 10];
-    in >> loadedInfo;
+    if (!in)
+        throw std::runtime_error("Bits: cannot open '" + filename + "' for reading");
+
+    // The container stores one ASCII '0'/'1' character per bit, so the file
+    // is text. Size the buffer from the real file length instead of a
+    // fixed guess: the previous fixed allocation could overflow on files
+    // larger than the guess.
+    in.seekg(0, std::ios::end);
+    std::streamoff fileLen = in.tellg();
+    if (fileLen < 0)
+        throw std::runtime_error("Bits: cannot determine the size of '" + filename + "'");
+    in.seekg(0, std::ios::beg);
+
+    // `size` is a capacity hint in units of 1024 characters; keep at least
+    // that much room so the historical call sites keep working.
+    std::size_t capacity = static_cast<std::size_t>(fileLen) + 1;
+    const std::size_t hint = static_cast<std::size_t>(pow(1024, size) * 10);
+    if (capacity < hint)
+        capacity = hint;
+
+    if (loadedInfo)
+        delete[] loadedInfo;
+    loadedInfo = new char[capacity];
+    std::memset(loadedInfo, 0, capacity);
+
+    in.read(loadedInfo, fileLen);
     in.close();
-    readLen = strlen(loadedInfo);
+
+    readLen = std::strlen(loadedInfo);
     vecLen = index =  0;
     readIndex = -1;
-
 }
 
-//析构函数，释放内存
+// Destructor, releases the loaded buffer
 Bits::~Bits() {
     if (loadedInfo)
         delete[] loadedInfo;
 }
 
-//将int类型长度为len的info转化为二进制，并写入bits
+// Append the low `len` bits of `info`, most significant bit first
 void Bits::write(const int& info, const int& len) {
     for (int i = len - 1; i >= 0; i--) {
         if (info & (1 << i))
@@ -42,7 +65,7 @@ void Bits::write(const int& info, const int& len) {
 }
 
 
-//在bits中添加一位1或0
+// Append a single bit to the current chunk
 void Bits::add(const std::bitset<1>& bit) {
     if (++index == PERLEN) {
         bits.emplace_back(0);
@@ -52,9 +75,11 @@ void Bits::add(const std::bitset<1>& bit) {
     bits[vecLen][index] = bit[0];
 }
 
-//将bits中的二进制内容保存为名为filename的文件
+// Write the bitstream to `filename`, one ASCII '0'/'1' character per bit
 void Bits::save(const std::string& filename) {
     std::ofstream out(filename, std::ios::binary | std::ios::trunc | std::ios::out);
+    if (!out)
+        throw std::runtime_error("Bits: cannot open '" + filename + "' for writing");
     for (int i = 0; i < vecLen ; i++) {
         for (int j = 0; j < PERLEN; j++)
             out << bits[i][j];
@@ -65,7 +90,7 @@ void Bits::save(const std::string& filename) {
     out.close();
 }
 
-//读取bits中的长度为len的二进制内容，转化为int类型
+// Read `len` bits and decode them as an unsigned integer
 int Bits::read(const int& len) {
     int decNum = 0;
     for (int i = 0; i < len; i++) {

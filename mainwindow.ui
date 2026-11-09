@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>主页</string>
+   <string>Home</string>
   </property>
   <property name="accessibleName">
    <string/>
@@ -29,7 +29,7 @@
          <string notr="true">background-color: rgb(255, 242, 64);</string>
         </property>
         <property name="text">
-         <string>压缩</string>
+         <string>Compress</string>
         </property>
         <property name="autoDefault">
          <bool>false</bool>
@@ -107,7 +107,7 @@
          <string notr="true">background-color: rgb(255, 242, 64);</string>
         </property>
         <property name="text">
-         <string>帮助</string>
+         <string>Help</string>
         </property>
        </widget>
       </item>
@@ -117,7 +117,7 @@
          <string notr="true">background-color: rgb(255, 242, 64);</string>
         </property>
         <property name="text">
-         <string>简介</string>
+         <string>Introduction</string>
         </property>
        </widget>
       </item>
@@ -127,7 +127,7 @@
          <string notr="true">background-color: rgb(255, 242, 64);</string>
         </property>
         <property name="text">
-         <string>解压缩</string>
+         <string>Decompress</string>
         </property>
        </widget>
       </item>

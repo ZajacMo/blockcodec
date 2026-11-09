@@ -3,7 +3,9 @@
 #include <QPushButton>
 #include <QCoreApplication>
 #include <QDataStream>
-#include <operatorsignals.cpp>
+#include <QDir>
+#include <QTemporaryFile>
+#include <operatorsignals.h>
 
 CompressWindow::CompressWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -12,19 +14,19 @@ CompressWindow::CompressWindow(QWidget *parent)
     ui->setupUi(this);
 
 
-    // 点击按钮发出回主界面的信号
+    // Emit the signal that returns to the main window
     connect(ui->mainbtn,&QPushButton::clicked,[=](){
         emit this->returnmain();
     });
-    // 点击按钮发出去解压缩界面的信号
+    // Emit the signal that opens the decompression window
     connect(ui->unbtn,&QPushButton::clicked,[=](){
         emit this->touncompress();
     });
-    // 点击按钮发出去帮助界面的信号
+    // Emit the signal that opens the help window
     connect(ui->helpbtn,&QPushButton::clicked,[=](){
         emit this->tohelp();
     });
-    //设置Icon
+    // Set the window icon
     QIcon icon(":/new/Resources/head.ico");
     this->setWindowIcon(icon);
     cg = new Compress_gray;
@@ -36,7 +38,7 @@ CompressWindow::~CompressWindow()
     delete ui;
     delete cg;
 }
-void CompressWindow::resizeEvent(QResizeEvent* event)/*显示图片的槽函数*/
+void CompressWindow::resizeEvent(QResizeEvent* event)/* Slot that rescales the preview image */
 {
     m_img2show = m_imgSrc.scaled(ui->firstphoto->size(),Qt::KeepAspectRatio,Qt::SmoothTransformation);
 
@@ -55,24 +57,38 @@ void CompressWindow::on_runbtn_clicked()
         return;
     }
     sigma = ui->doubleSpinBox->value();
+    // Load the source image. cv::imread returns an empty matrix when it
+    // fails, so check the result before handing it to the codec.
+    cv::Mat source = cv::imread(strFileName.toStdString(), isColorful ? 1 : 0);
+    if (source.empty())
+    {
+        QMessageBox::warning(this,"Error","Cannot read the selected image file.");
+        return;
+    }
     if(cg)
         delete cg;
     cg = new Compress_gray;
-    //载入图片
-    cg->init_compress(cv::imread(strFileName.toStdString(),isColorful),sigma);
-    //原图大小
+    try {
+        cg->init_compress(source,sigma);
+    } catch (const std::exception& e) {
+        QMessageBox::warning(this,"Error",QString("Cannot compress this image: %1").arg(e.what()));
+        delete cg;
+        cg = nullptr;
+        return;
+    }
+    // Dimensions of the source image
     QString size = QString::number(cg->img.rows)+"*"+QString::number(cg->img.cols);
     if(isColorful)
         size += "*3";
     size += "Bytes";
     ui->formerSize->setText(size);
-    //压缩
+    // Run the encoder
     cg->compress();
-    //显示压缩率
+    // Show the compression ratio
     ui->compressRate->setText(QString::number(cg->getRate()));
-    //显示压缩时间
+    // Show the compression time
     ui->compressTime->setText(QString::number(cg->getTime(),'g',6)+" s");
-    //显示压缩后大小
+    // Show the compressed size
     ui->newSize->setText(QString::number(cg->getWriteLen()/8)+" Bytes");
 }
 
@@ -85,7 +101,13 @@ void CompressWindow::on_savebtn_clicked()
         return;
     }
     savePath = QFileDialog::getSaveFileName(this,tr("Save Image"), "Desktop/result.nam");
-    cg->save(savePath.toStdString());
+    if (savePath.isEmpty())
+        return;
+    try {
+        cg->save(savePath.toStdString());
+    } catch (const std::exception& e) {
+        QMessageBox::warning(this,"Error",QString("Cannot save the compressed file: %1").arg(e.what()));
+    }
 }
 
 
@@ -100,7 +122,7 @@ void CompressWindow::on_blackphoto_clicked()
     isColorful=0;
 }
 
-    // 点击按钮选择图片导入
+    // Choose the image to compress
 void CompressWindow::on_choosebtn_clicked()
 {
     strFileName = QFileDialog::getOpenFileName(this,tr("Open Image"), "lena512.bmp", tr("Image Files (*.png *.jpg *.bmp)"));
@@ -115,7 +137,7 @@ void CompressWindow::on_choosebtn_clicked()
 
 }
 
-// 点击按钮解压缩
+// Decompress and show the result
 void CompressWindow::on_uncompressBtn_clicked()
 {
     if(strFileName.isEmpty())
@@ -123,20 +145,39 @@ void CompressWindow::on_uncompressBtn_clicked()
         QMessageBox::warning(this,"Error","Please choose a photo first!");
         return;
     }
-    cg->save("compressed.nam");
-    Compress_gray ucg;
-    ucg.init_uncompress("compressed.nam");
+    if(!cg || cg->isNull)
+    {
+        QMessageBox::warning(this,"Error","Please compress first!");
+        return;
+    }
 
-    cv::Mat result = ucg.uncompress();
+    // Round-trip through a temporary file rather than a fixed name in the
+    // working directory, which would collide with the user's own files.
+    QTemporaryFile tmp(QDir::tempPath() + "/openCV_test_XXXXXX.nam");
+    if (!tmp.open())
+    {
+        QMessageBox::warning(this,"Error","Cannot create a temporary file.");
+        return;
+    }
+    const QString tmpPath = tmp.fileName();
+    tmp.close();
 
-    m_img2show = QImage((const unsigned char*)(result.data),result.cols,result.rows,result.cols,QImage::Format_Grayscale8);
+    try {
+        cg->save(tmpPath.toStdString());
 
-    m_img2show = m_img2show.scaled(ui->secondlphoto->size(),Qt::KeepAspectRatio,Qt::SmoothTransformation);
+        Compress_gray ucg;
+        ucg.init_uncompress(tmpPath.toStdString());
+        cv::Mat result = ucg.uncompress();
 
-    m_pix2show=QPixmap::fromImage(m_img2show);
+        m_img2show = QImage((const unsigned char*)(result.data),result.cols,result.rows,result.cols,QImage::Format_Grayscale8);
+        m_img2show = m_img2show.scaled(ui->secondlphoto->size(),Qt::KeepAspectRatio,Qt::SmoothTransformation);
 
-    ui->secondlphoto->setPixmap(m_pix2show);
+        m_pix2show=QPixmap::fromImage(m_img2show);
+        ui->secondlphoto->setPixmap(m_pix2show);
 
-    ui->PSNR->setText("PSNR: "+QString::number(Compress_gray::getPSNR(cg->img,result)));
+        ui->PSNR->setText("PSNR: "+QString::number(Compress_gray::getPSNR(cg->img,result)));
+    } catch (const std::exception& e) {
+        QMessageBox::warning(this,"Error",QString("Cannot decompress: %1").arg(e.what()));
+    }
 }
 

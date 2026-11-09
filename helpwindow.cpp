@@ -6,19 +6,19 @@ HelpWindow::HelpWindow(QWidget *parent)
     , ui(new Ui::HelpWindow)
 {
     ui->setupUi(this);
-    // 点击按钮发出回主界面的信号
+    // Emit the signal that returns to the main window
     connect(ui->mainbtn,&QPushButton::clicked,[=](){
         emit this->returnmain();
     });
-    // 点击按钮发出去解压缩界面的信号
+    // Emit the signal that opens the decompression window
     connect(ui->unbtn,&QPushButton::clicked,[=](){
         emit this->touncompress();
     });
-    // 点击按钮发出去压缩界面的信号
+    // Emit the signal that opens the compression window
     connect(ui->compressbtn,&QPushButton::clicked,[=](){
         emit this->tocompress();
     });
-    //设置Icon
+    // Set the window icon
     QIcon icon(":/new/Resources/head.ico");
     this->setWindowIcon(icon);
 

@@ -11,80 +11,80 @@ MainWindow::MainWindow(QWidget *parent)
     ui->setupUi(this);
 
     this->pcompress=new CompressWindow;
-    // 收到信号切换为压缩界面
+    // Switch to the compression window
     connect(ui->compressbtn,&QPushButton::clicked,[=](){
         this->hide();
         this->pcompress->show();
     });
-    // 收到信号切换回主界面
+    // Switch back to the main window
     connect(this->pcompress,&CompressWindow::returnmain,[=](){
         this->pcompress->hide();
         this->show();
     });
-    // 收到信号切换为解压缩界面
+    // Switch to the decompression window
     connect(this->pcompress,&CompressWindow::touncompress,[=](){
         this->pcompress->hide();
         this->puncompress->show();
     });
-    // 收到信号切换为帮助界面
+    // Switch to the help window
     connect(this->pcompress,&CompressWindow::tohelp,[=](){
         this->pcompress->hide();
         this->phelp->show();
     });
     this->phelp=new HelpWindow;
-    // 收到信号切换为帮助界面
+    // Switch to the help window
     connect(ui->helpbtn,&QPushButton::clicked,[=](){
         this->hide();
         this->phelp->show();
     });
-    // 收到信号切换回主界面
+    // Switch back to the main window
     connect(this->phelp,&HelpWindow::returnmain,[=](){
         this->phelp->hide();
         this->show();
     });
-    // 收到信号切换为解压缩界面
+    // Switch to the decompression window
     connect(this->phelp,&HelpWindow::touncompress,[=](){
         this->phelp->hide();
         this->puncompress->show();
     });
-    // 收到信号切换为压缩界面
+    // Switch to the compression window
     connect(this->phelp,&HelpWindow::tocompress,[=](){
         this->phelp->hide();
         this->pcompress->show();
     });
     this->pintroduce=new IntroduceWindow;
-    // 收到信号切换为介绍界面
+    // Switch to the introduction window
     connect(ui->introducebtn,&QPushButton::clicked,[=](){
         this->hide();
         this->pintroduce->show();
     });
-    // 收到信号切换回主界面
+    // Switch back to the main window
     connect(this->pintroduce,&IntroduceWindow::returnmain,[=](){
         this->pintroduce->hide();
         this->show();
     });
     this->puncompress=new uncompressWindow;
-    // 收到信号切换为解压缩界面
+    // Switch to the decompression window
     connect(ui->uncompressbtn,&QPushButton::clicked,[=](){
         this->hide();
         this->puncompress->show();
     });
-    // 收到信号切换回主界面
+    // Switch back to the main window
     connect(this->puncompress,&uncompressWindow::returnmain,[=](){
         this->puncompress->hide();
         this->show();
     });
-    // 收到信号切换为帮助界面
+    // Switch to the help window
     connect(this->puncompress,&uncompressWindow::tohelp,[=](){
         this->puncompress->hide();
         this->phelp->show();
     });
-    // 收到信号切换为压缩界面
+    // Switch to the compression window
     connect(this->puncompress,&uncompressWindow::tocompress,[=](){
         this->puncompress->hide();
         this->pcompress->show();
     });
-    //设置Icon
+    // Set the window icon
     QIcon icon(":/new/Resources/head.ico");
     this->setWindowIcon(icon);
 
@@ -93,5 +93,11 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    // The sub-windows are top-level windows, so they are not owned by
+    // this object and have to be destroyed explicitly.
+    delete pcompress;
+    delete puncompress;
+    delete phelp;
+    delete pintroduce;
     delete ui;
 }

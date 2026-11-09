@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>解压</string>
+   <string>Decompress</string>
   </property>
   <property name="styleSheet">
    <string notr="true"/>
@@ -58,7 +58,7 @@
              <item>
               <widget class="QLabel" name="label_2">
                <property name="text">
-                <string>原文件大小为：</string>
+                <string>Original file size:</string>
                </property>
               </widget>
              </item>
@@ -72,7 +72,7 @@
              <item>
               <widget class="QLabel" name="label_4">
                <property name="text">
-                <string>解压缩用时：</string>
+                <string>Decompression time:</string>
                </property>
               </widget>
              </item>
@@ -86,7 +86,7 @@
              <item>
               <widget class="QLabel" name="label_3">
                <property name="text">
-                <string>解码后大小为：</string>
+                <string>Decoded size:</string>
                </property>
               </widget>
              </item>
@@ -100,7 +100,7 @@
              <item>
               <widget class="QLabel" name="label_5">
                <property name="text">
-                <string>压缩比为：</string>
+                <string>Compression ratio:</string>
                </property>
               </widget>
              </item>
@@ -177,7 +177,7 @@
              <string notr="true">background-color: rgb(255, 255, 127);</string>
             </property>
             <property name="text">
-             <string>选择文件</string>
+             <string>Choose file</string>
             </property>
            </widget>
           </item>
@@ -204,7 +204,7 @@
              <string notr="true">background-color: rgb(255, 255, 127);</string>
             </property>
             <property name="text">
-             <string>解压缩</string>
+             <string>Decompress</string>
             </property>
            </widget>
           </item>
@@ -227,7 +227,7 @@
              <string notr="true">background-color: rgb(255, 255, 127);</string>
             </property>
             <property name="text">
-             <string>保存</string>
+             <string>Save</string>
             </property>
            </widget>
           </item>
@@ -267,7 +267,7 @@
              <string notr="true">background-color: rgb(255, 255, 127);</string>
             </property>
             <property name="text">
-             <string>压缩</string>
+             <string>Compress</string>
             </property>
            </widget>
           </item>
@@ -290,7 +290,7 @@
              <string notr="true">background-color: rgb(255, 255, 127);</string>
             </property>
             <property name="text">
-             <string>返回主界面</string>
+             <string>Back to main window</string>
             </property>
            </widget>
           </item>
@@ -313,7 +313,7 @@
              <string notr="true">background-color: rgb(255, 255, 127);</string>
             </property>
             <property name="text">
-             <string>帮助</string>
+             <string>Help</string>
             </property>
            </widget>
           </item>
@@ -349,7 +349,7 @@
    </property>
    <widget class="QMenu" name="menu">
     <property name="title">
-     <string>解压缩</string>
+     <string>Decompress</string>
     </property>
    </widget>
    <addaction name="menu"/>

@@ -3,7 +3,7 @@
 #include <bitset>
 #include <vector>
 
-#define PERLEN 1024//每个vector中存储的二进制长度
+#define PERLEN 1024// Number of bits stored per std::bitset chunk
 
 class Bits {
 
@@ -11,42 +11,42 @@ class Bits {
 
 private:
 
-    //存储的二进制内容
+    // Binary payload, stored as a list of fixed-size bitsets
     std::vector<std::bitset<PERLEN>> bits;
 
-    //读取的二进制内容
+    // Raw buffer holding the bits loaded from disk (ASCII '0'/'1')
     char* loadedInfo;
 
 protected:
 
-    //bits中的vector长度
+    // Index of the current bitset chunk and the bit position inside it
     int vecLen, index;
 
-    //读取时二进制文本总长度
+    // Total length (in characters) of the loaded binary text
     long long readLen;
 
-    long long readIndex;
+    long long readIndex;   // Cursor into the loaded text
 
 protected:
 
     Bits();
 
-    //析构函数，释放内存
+    // Destructor, releases the loaded buffer
     ~Bits();
 
-    //读取文件内容初始化Bits类
+    // Load a file and initialise the Bits object (used when decompressing)
     void init(const std::string& filename, const int& size = 2);
 
-    //将int类型长度为len的info转化为二进制，并写入bits
+    // Append the low `len` bits of `info`, most significant bit first
     void write(const int& info, const int& len);
 
-    //在bits中添加一位1或0
+    // Append a single bit to the current chunk
     void add(const std::bitset<1>& bit);
 
-    //将bits中的二进制内容保存为名为filename的文件
+    // Write the bitstream to `filename`, one ASCII '0'/'1' character per bit
     void save(const std::string& filename);
 
-    //读取bits中的长度为len的二进制内容，转化为int类型
+    // Read `len` bits and decode them as an unsigned integer
     int read(  const int& len);
 
 };

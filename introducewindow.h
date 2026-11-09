@@ -17,7 +17,7 @@ public:
     ~IntroduceWindow();
 
 signals:
-    void returnmain();/*发出回到主界面的信号*/
+    void returnmain();/* Emitted to return to the main window */
 
 private:
     Ui::IntroduceWindow *ui;

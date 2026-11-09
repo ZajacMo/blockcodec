@@ -1,4 +1,7 @@
 #include "Compress_gray.h"
+#include <chrono>
+#include <stdexcept>
+#include <limits>
 
 
 Compress_gray::Compress_gray()
@@ -9,8 +12,16 @@ Compress_gray::Compress_gray()
     isNull=true;
 }
 
-//初始化（压缩）
+// Prepare the encoder for a source image
 void Compress_gray::init_compress(const cv::Mat& imge, const double& sigma_) {
+    // An empty Mat means the caller failed to load the file (cv::imread
+    // returns an empty matrix rather than throwing), so refuse early
+    // instead of producing an empty image.
+    if (imge.empty())
+        throw std::runtime_error("Compress_gray: the source image is empty");
+    if (imge.depth() != CV_8U)
+        throw std::runtime_error("Compress_gray: only 8-bit source images are supported");
+
     isNull=false;
     sigma = sigma_;
     img = imge;
@@ -20,16 +31,24 @@ void Compress_gray::init_compress(const cv::Mat& imge, const double& sigma_) {
     newMatrix(encoded_img, rows, cols);
 }
 
-//初始化（解压）
+// Prepare the decoder for a compressed file
 void Compress_gray::init_uncompress(const std::string filename, const int& size) {
     data.init(filename, size);
     isNull = false;
-    //读取尺寸
+    // Read the image dimensions
     rows = data.read(16);
     cols = data.read(16);
     isColorful = (cols>rows?true:false);
 
-    //初始化参数
+    // The dimensions come straight out of the file, so a truncated or
+    // corrupt stream would otherwise ask for an arbitrary allocation.
+    // Reject anything that cannot describe a real image.
+    if (rows <= 0 || cols <= 0)
+        throw std::runtime_error("Compress_gray: invalid image dimensions in the compressed file");
+    if (static_cast<long long>(rows) * cols > kMaxPixels)
+        throw std::runtime_error("Compress_gray: compressed file declares an implausible image size");
+
+    // Initialise the working state
     result = cv::Mat::zeros(rows, cols, CV_8UC1);
     sigma = 10;
     if(isMarked)
@@ -40,7 +59,7 @@ void Compress_gray::init_uncompress(const std::string filename, const int& size)
     newMatrix(encoded_img, rows, cols);
 }
 
-//析构函数，释放内存
+// Destructor, releases the working matrices
 Compress_gray::~Compress_gray()
 {
     if(isMarked)
@@ -49,7 +68,7 @@ Compress_gray::~Compress_gray()
         deleteMatrix(encoded_img, rows);
 }
 
-//快速删除矩阵，防止内存泄漏
+// Release a 2D array, avoiding a memory leak
 template<typename t>
 void Compress_gray::deleteMatrix(t**& p, const int& len1) {
     if (p) {
@@ -59,7 +78,7 @@ void Compress_gray::deleteMatrix(t**& p, const int& len1) {
     }
 }
 
-//快速创建矩阵
+// Allocate a 2D array
 template<typename t>
 void Compress_gray::newMatrix(t**& p, const int& len1, const int& len2, t init) {
     p = new t * [len1];
@@ -70,23 +89,23 @@ void Compress_gray::newMatrix(t**& p, const int& len1, const int& len2, t init) 
     }
 }
 
-//设置编码后的图像
+// Access a cell of the marker matrix
 uchar& Compress_gray::setEncodedImg(cv::Point& p) {
     return encoded_img[p.x][p.y];
 }
 
-//判断是否为配对的点（解码用）
+// True when (lt, rb) is the diagonal pair of a block (decoder side)
 bool Compress_gray::isPeer(const cv::Point& lt, const cv::Point& rb) {
 
-    //首先判断是否被标记，并不是孤立点（3）和矩形起始点（1）
+    // The cell must be unclaimed and must not be an isolated pixel (3) or a block origin (1)
     if (!isMarked[rb.x][rb.y] && (encoded_img[rb.x][rb.y] == 2 || !encoded_img[rb.x][rb.y])) {
 
-        //遍历rb所在列
+        // Walk the column of rb
         for (int i = lt.x; i < rb.x; i++)
             if (isMarked[i][rb.y] || encoded_img[i][rb.y] && !(lt.x == i && lt.y == rb.y))
                 return false;
 
-        //遍历rb所在行
+        // Walk the row of rb
         for (int j = lt.y; j < rb.y; j++)
             if (isMarked[rb.x][j] || encoded_img[rb.x][j] && !(lt.x == rb.x && lt.y == j))
                 return false;
@@ -97,19 +116,19 @@ bool Compress_gray::isPeer(const cv::Point& lt, const cv::Point& rb) {
     return false;
 }
 
-//对给定的左上角坐标，寻找右下角坐标（编码用）
+// Find the bottom-right corner for a given top-left corner (encoder side)
 cv::Point Compress_gray::findRb(const cv::Point& lt) {
     cv::Point rb = lt;
-    //沿对角线扩展
+    // Extend along the diagonal
     while (rb.x + 1 < rows && rb.y + 1 < cols &&
            RBlock(lt, cv::Point(rb.x + 1, rb.y + 1)).isBlock(img, isMarked, sigma)) {
         rb.x++;
         rb.y++;
     }
-    //水平扩展
+    // Extend horizontally
     while (rb.y + 1 < cols && RBlock(lt, cv::Point(rb.x, rb.y + 1)).isBlock(img, isMarked, sigma))
         rb.y++;
-    //垂直扩展
+    // Extend vertically
     while (rb.x + 1 < rows && RBlock(lt, cv::Point(rb.x + 1, rb.y)).isBlock(img, isMarked, sigma))
         rb.x++;
 
@@ -117,28 +136,28 @@ cv::Point Compress_gray::findRb(const cv::Point& lt) {
 }
 
 
-//对给定的左上角坐标，寻找一个矩形（解码用）
+// Find the block extent for a given top-left corner (decoder side)
 RBlock Compress_gray::findBlock(const cv::Point& lt, int& blockNum) {
     cv::Point rb = lt;
-    //除了孤立点矩形
+    // Isolated pixels have no extent to recover
     if (encoded_img[lt.x][lt.y] != 3)
     {
-        //水平扩展
+        // Extend horizontally
         while (rb.y + 1 < cols && isPeer(lt, cv::Point(rb.x, rb.y + 1)))
             rb.y++;
-        //垂直扩展
+        // Extend vertically
         while (rb.x + 1 < rows && isPeer(lt, cv::Point(rb.x + 1, rb.y)))
             rb.x++;
     }
 
-    //如果此处报错则应检查编码解码是否存在问题
+    // A failure here means the encoder and decoder disagree
     if (blockNum >= allBlocks.size())
         throw std::runtime_error("blockNum out of range");
 
-    //更新读取的块的rb
+    // Record the recovered bottom-right corner of the block
     allBlocks[blockNum].rb = rb;
 
-    //根据解压结果为图片上色
+    // Paint the reconstructed pixels back into the image
     allBlocks[blockNum].regain(result, encoded_img);
 
     return allBlocks[blockNum];
@@ -146,41 +165,47 @@ RBlock Compress_gray::findBlock(const cv::Point& lt, int& blockNum) {
 
 
 
-//将图像编码为0123的数字矩阵
+// Read the monotonic clock (seconds)
+double Compress_gray::now() {
+    using clock = std::chrono::steady_clock;
+    return std::chrono::duration<double>(clock::now().time_since_epoch()).count();
+}
+
+// Build the block list and the 0/1/2/3 marker matrix
 std::vector<RBlock> Compress_gray::encode() {
     std::vector<RBlock> blocks;
-    //遍历图像
+    // Walk the image
     for (int i = 0; i < rows; i++)
         for (int j = 0; j < cols; j++)
         {
-            //首先排除标记过的点
+            // Skip pixels that are already encoded
             if (!isMarked[i][j])
             {
-                //找到矩形的右下角
+                // Find the bottom-right corner of the block
                 cv::Point start = cv::Point(i, j), end = findRb(start);
 
-                //创建block
+                // Create the block
                 RBlock block(img, start, end);
 
-                //孤立点
+                // Isolated pixel
                 if (start.x == end.x && start.y == end.y)
                 {
                     setEncodedImg(start) = 3;
                 }
-                //其他矩形
+                // Rectangular block
                 else if (start.x <= end.x && start.y <= end.y)
                 {
                     setEncodedImg(start) = 1;
                     setEncodedImg(end) = 2;
                 }
 
-                //保存block
+                // Record the block
                 blocks.push_back(block);
 
-                //标记已经编码的区域
+                // Mark the encoded region
                 block.mark(isMarked);
 
-                //更新到标记过的block的末尾，提高遍历效率
+                // Skip to the end of the marked region to speed up the scan
                 j = end.y;
             }
         }
@@ -188,31 +213,31 @@ std::vector<RBlock> Compress_gray::encode() {
     return blocks;
 }
 
-//对0123的数字矩阵解码
+// Rebuild the image from the 0/1/2/3 marker matrix
 std::vector<RBlock> Compress_gray::decode() {
 
-    //解码
+    // Decode
     std::vector<RBlock> blocks;
     int blockNum = 0;
 
-    //遍历矩阵
+    // Walk the marker matrix
     for (int i = 0; i < rows; i++)
         for (int j = 0; j < cols; j++)
         {
-            //找到未被标记的点
+            // Find the next unclaimed cell
             if (!isMarked[i][j])
             {
-                //找到矩形的右下角
+                // Find the bottom-right corner of the block
                 RBlock block = findBlock(cv::Point(i, j), blockNum);
 
-                //保存block
+                // Record the block
                 blocks.push_back(block);
 
-                //标记已经解码的区域
+                // Mark the reconstructed region
                 block.mark(isMarked);
                 blockNum++;
 
-                //更新到标记过的block的末尾，提高遍历效率
+                // Skip to the end of the marked region to speed up the scan
                 j = block.rb.y;
             }
         }
@@ -221,25 +246,25 @@ std::vector<RBlock> Compress_gray::decode() {
 }
 
 
-//将图像压缩为二进制字符串
+// Encode the image into the bitstream
 void Compress_gray::compress()
 {
-    //记录开始时间
-    QueryPerformanceCounter(&time[0]);
+    // Record the start time
+    time[0] = now();
     //data.write((int)log2(rows), 4);
     data.write(rows, 16);
     data.write(cols, 16);
 
-    //判断是否为彩色图像
+    // Detect whether the source image is colour
     //if (img.channels() == 3)
     //    data.add(1);
     //else
     //    data.add(0);
 
-    //编码
+    // Build the block list
     allBlocks = encode();
 
-    //记录编码后的图像
+    // Serialise the marker matrix
     for (int i = 0; i < rows; i++)
     {
         int last_position = 0;
@@ -247,12 +272,12 @@ void Compress_gray::compress()
         for (int j = 0; j < cols; j++) {
             int value = encoded_img[i][j];
             if (0 == value) {
-                //该行没有被编码的像素时赋0
+                // No encoded pixel on this row: emit a 0
                 if (j == cols - 1)
                     data.add(0);
             }
             else {
-                //该行有被编码的像素时先赋1，再赋码
+                // This row has an encoded pixel: emit a 1, then the block kind
                 data.add(1);
                 if (1 == value)
                     data.add(1);
@@ -264,30 +289,30 @@ void Compress_gray::compress()
                     data.add(0);
                     data.add(0);
                 }
-                //计算记录位置差需要的位数
-                //last_position是下标，故在last_position不为0时，需要多减去1
+                // Number of bits needed for the position delta
+                // last_position is an index, so subtract one extra when the row already has a pixel
                 int b = ceil(log((double)(cols - last_position - !isNull)) / log(2.0));
 
-                //防止b为0
+                // Guard against a zero-width field
                 if (!b) b++;
 
-                //计算位置差
+                // Compute the position delta
                 int gap = j - last_position - !isNull;
 
-                //记录该行已有编码像素
+                // The row now holds at least one encoded pixel
                 isNull = false;
 
-                //记录当前位置
+                // Record the current position
                 last_position = j;
 
-                //按位运算记录位置差
+                // Write the position delta as a bit field
                 data.write(gap, b);
 
-                //记录颜色
-                //孤立点只记录一个颜色
+                // Write the pixel colours
+                // An isolated pixel stores a single colour
                 if (value == 3)
                     data.write(img.at<uchar>(i, j), getDepth());
-                //矩形记录四个颜色
+                // A rectangular block stores four corner colours
                 else if (value == 1) {
                     for (int m = 0; m < allBlocks.size(); m++) {
                         if (allBlocks[m].lt == cv::Point(i, j)) {
@@ -304,21 +329,21 @@ void Compress_gray::compress()
         }
     }
 
-    //记录结束时间
-    QueryPerformanceCounter(&time[1]);
+    // Record the end time
+    time[1] = now();
 }
 
-//将二进制字符串解压为图像
+// Decode the bitstream back into an image
 cv::Mat& Compress_gray::uncompress()
 {
-    //记录开始时间
-    QueryPerformanceCounter(&time[0]);
+    // Record the start time
+    time[0] = now();
     bool isNull = true;
-    //上个非零元素的位置
+    // Position of the previous non-zero element
     int col = 0, row = 0, value = 0;
     while ( data.readIndex < data.readLen)
     {
-        //读取是否为0
+        // Read the row-continuation flag
         if (!data.read(1)) {
             row++;
             if (row >= rows)
@@ -334,25 +359,25 @@ cv::Mat& Compress_gray::uncompress()
                 value = (data.read(1)? 2 : 3);
         }
 
-        //计算记录位置差需要的位数
+        // Number of bits needed for the position delta
         int b = ceil(log((double)(cols - col - !isNull)) / log(2.0));
         if (!b) b++;
 
-        //读取位置差
+        // Read the position delta
         int gap = data.read(b);
 
-        //计算当前位置
+        // Compute the current position
         col += gap + !isNull;
 
-        //记录该行已有编码像素
+        // The row now holds at least one encoded pixel
         isNull = false;
 
-        //赋值
+        // Store the marker
         encoded_img[row][col] = value;
 
-        //读取颜色
+        // Read the pixel colours
         if (value == 3) {
-            //孤立点
+            // Isolated pixel
             allBlocks.push_back(
                 RBlock(
                     cv::Point(row, col),
@@ -360,7 +385,7 @@ cv::Mat& Compress_gray::uncompress()
                     data.read(getDepth())));
         }
         else if (value == 1) {
-            //矩形
+            // Rectangular block
             uchar** p = nullptr;
             newMatrix(p, 2, 2);
             p[0][0] = data.read(getDepth());
@@ -372,7 +397,7 @@ cv::Mat& Compress_gray::uncompress()
             deleteMatrix(p, 2);
         }
 
-        //如果该行最后一个像素被编码，就换行
+        // The last pixel of the row was encoded: move to the next row
         if (col == (cols - 1))
         {
             row++;
@@ -381,18 +406,31 @@ cv::Mat& Compress_gray::uncompress()
         }
     }
     decode();
-    QueryPerformanceCounter(&time[1]);
+    time[1] = now();
     return result;
 }
 
 
-//PSNR
+// Compute the PSNR between two images, in dB.
 double Compress_gray::getPSNR(cv::Mat img1, cv::Mat img2) {
-    double mid = 0;;
+    // The two images must describe the same samples, otherwise the
+    // element-wise comparison below reads out of bounds.
+    if (img1.empty() || img2.empty())
+        throw std::runtime_error("Compress_gray::getPSNR: empty image");
+    if (img1.rows != img2.rows || img1.cols != img2.cols || img1.channels() != img2.channels())
+        throw std::runtime_error("Compress_gray::getPSNR: image dimensions do not match");
+
+    double mid = 0;
     for (int i = 0; i < img1.rows; i++)
         for (int j = 0; j < img1.cols*img1.channels(); j++) {
             mid += pow(img1.at<uchar>(i, j) - img2.at<uchar>(i, j), 2);
         }
+
+    // A perfect reconstruction has zero mean squared error, so the PSNR
+    // is unbounded. Report infinity instead of dividing by zero.
+    if (mid == 0)
+        return std::numeric_limits<double>::infinity();
+
     return 10 * log10f(pow(255., 2) * img1.cols * img1.rows *img1.channels() / mid);
 }
 
@@ -410,7 +448,7 @@ int Compress_gray::getDepth() {
     case CV_64F:
         return 64;
     default:
-        return -1; // 未知或不支持的色深
+        return -1; // Unknown or unsupported sample depth
     }
 }
 
@@ -429,9 +467,7 @@ long long Compress_gray::getWriteLen() const {
 }
 
 double Compress_gray::getTime() const{
-    LARGE_INTEGER tmp;
-    QueryPerformanceFrequency(&tmp);
-    return (time[1].QuadPart - time[0].QuadPart) * 1.0 / tmp.QuadPart;
+    return time[1] - time[0];
 }
 
 double Compress_gray::getRate()const {

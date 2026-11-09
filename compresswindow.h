@@ -26,13 +26,13 @@ class CompressWindow : public QMainWindow
 
 public:
     explicit CompressWindow(QWidget *parent = nullptr);
-    virtual void resizeEvent(QResizeEvent* event);/*选择图片的槽函数声明*/
+    virtual void resizeEvent(QResizeEvent* event);/* Slot that rescales the preview image */
     ~CompressWindow();
 
 signals:
-    void returnmain();/*发出回到主界面的信号*/
-    void touncompress();/*发出去解压缩界面的信号*/
-    void tohelp();/*发出回到帮助界面的信号*/
+    void returnmain();/* Emitted to return to the main window */
+    void touncompress();/* Emitted to open the decompression window */
+    void tohelp();/* Emitted to open the help window */
 
 private slots:
     void on_runbtn_clicked();
@@ -54,10 +54,10 @@ private:
     QPixmap m_pix2show;
     QString strFileName;
     QString savePath;
-    Compress_gray* cg;
-    //允许误差
+    Compress_gray* cg = nullptr;
+    // Maximum tolerated deviation
     double sigma = 10;
-    //彩色1 灰度0
+    // 1 = colour, 0 = greyscale
     int isColorful = 0;
 };
 

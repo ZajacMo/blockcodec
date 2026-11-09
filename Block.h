@@ -5,10 +5,10 @@ class Block
 	friend class Compress_gray;
 protected:
 
-	//左上角和右下角坐标
+	// Top-left and bottom-right corners of the block
 	cv::Point lt, rb;
 
-	//每个区域记录的颜色
+	// Corner colours captured for this block
 	uchar color[2][2];
 
 public:

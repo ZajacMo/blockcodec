@@ -17,13 +17,13 @@ class uncompressWindow : public QMainWindow
 
 public:
     explicit uncompressWindow(QWidget *parent = nullptr);
-    void choose();/*选择文档打开的槽函数*/
+    void choose();/* Slot that opens the compressed document */
     ~uncompressWindow();
 
 signals:
-    void returnmain();/*发出回到主界面的信号*/
-    void tohelp();/*发出回到帮助界面的信号*/
-    void tocompress();/*发出去压缩界面的信号*/
+    void returnmain();/* Emitted to return to the main window */
+    void tohelp();/* Emitted to open the help window */
+    void tocompress();/* Emitted to open the compression window */
 
 private slots:
     void on_choosebtn_clicked();
@@ -34,7 +34,7 @@ private slots:
 
 private:
     Ui::uncompressWindow *ui;
-    Compress_gray* ucg;
+    Compress_gray* ucg = nullptr;
     QString fileName;
 };
 
