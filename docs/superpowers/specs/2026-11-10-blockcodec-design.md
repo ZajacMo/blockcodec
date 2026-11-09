@@ -190,8 +190,8 @@ channel count is a separate axis.
 
 Using the maximum deviation rather than a Euclidean distance is deliberate: for
 a single-channel image the two definitions coincide, so **single-channel
-behaviour is bit-for-bit unchanged**. The golden regression test relies on
-this property.
+behaviour is unchanged**. The golden regression test relies on this property
+by comparing block structure and reconstructed pixels, not raw bytes.
 
 ### 6.3 Metric definitions
 
@@ -204,18 +204,28 @@ psnr = 10 * log10(255^2 * rows * cols * channels / sum(diff^2))
 `bpp` counts all channels, so a colour image is not flattered by the
 denominator.
 
-This corrects two defects in the current code:
+Two things need care here, and they are easy to conflate:
 
-1. The legacy `getRate()` returns **bytes per pixel** (`getWriteLen() / ... /
-   8.0`) but the README reports it as "bits per pixel". The CR formula
-   `8.0 / BPP` inherits the factor-of-eight error.
-2. The VS variant multiplies by `img.channels()` a second time even though
-   `cols` already includes the channel count, so its CR is wrong by the
-   channel factor on colour images. On greyscale images the two agree, which
-   is why the bug went unnoticed.
+1. **Bits versus bytes.** `getWriteLen()` returns the number of *bits* in the
+   bitstream, so `getWriteLen() / (rows * cols)` is already bits per pixel.
+   The legacy `getRate()` divides by `rows * cols * 8.0`, which makes it
+   **eight times smaller** than the bits-per-pixel value — it is not a
+   bits-per-pixel figure despite being documented as one.
+
+   The legacy `.nam` container stores one ASCII character per bit, so the
+   file on disk is *eight times larger* than the bitstream it carries. For
+   `lena512` at `sigma = 10` the bitstream is 799,631 bits while the file is
+   799,632 bytes. The two must never be reported under the same name.
+
+2. **The channel factor.** The VS variant's `getRate()` multiplies by
+   `img.channels()` a second time even though `cols` already includes the
+   channel count, so its compression ratio is wrong by the channel factor on
+   colour images. On greyscale images the two agree, which is why the bug
+   went unnoticed.
 
 The CLion prototype's `BPP()` is the closest to correct and is used as the
-reference definition.
+reference definition. The new API reports `bpp` and `cr` as distinct,
+explicitly named fields, so the ambiguity cannot recur.
 
 ## 7. File format
 
@@ -337,13 +347,35 @@ GoogleTest, fetched with `FetchContent`.
 
 | Suite | Coverage |
 |-------|----------|
-| Golden regression | The legacy single-channel implementation is retained as an oracle; both implementations run on the same image and their bitstreams must be **bit-for-bit identical**. This is the safety net for the colour refactor. |
+| Golden regression | The legacy single-channel implementation is retained as an oracle. Both implementations run on the same image, and the test asserts that they produce **the same block structure and the same reconstructed pixels**. It does **not** compare bitstreams: the new container is densely packed and transmits the gap width explicitly, so its bytes necessarily differ from the legacy ASCII-per-bit stream. What must be preserved is the *algorithm*, not the encoding. See section 10.1. |
 | Bitstream | write/read symmetry, every field width, crossing the 1024-bit vector boundary |
 | Round trip | Greyscale and colour: dimensions and channel count preserved, PSNR above a floor, block count consistent |
 | Container | header serialisation round trip, magic and version validation |
 | Robustness | Truncated files, wrong magic, wrong version, absurd dimensions: must throw, never crash |
 | Fuzzing | Random bytes and truncations of a valid file: must fail cleanly, no undefined behaviour |
 | Metrics | BPP, CR and PSNR checked against hand-computed values for known inputs |
+
+### 10.1 The golden regression test in detail
+
+The oracle is the current `Compress_gray`, kept under `tests/legacy/` and
+compiled into the test binary. It is never installed and never shipped.
+
+For each image in the reference set and for each `sigma`, the test asserts:
+
+1. The legacy and the new encoder produce the **same number of blocks**.
+2. The legacy and the new encoder produce the **same block origins and
+   corners**, compared as sets of `(row, col, rb_row, rb_col)`.
+3. The reconstructed images are **pixel-identical**.
+
+Because the block search decides a block purely from its corner samples and
+the tolerance `sigma`, and because the multi-channel rule (section 6.2)
+reduces to the single-channel rule when there is one channel, the block
+structure must match exactly. A mismatch means the refactor changed the
+algorithm, which the test reports as a failure listing the first differing
+block.
+
+The existing `tests/vectors/gradient_16x16` vector stays as it is: it pins
+the legacy decoder's behaviour, which remains valid for the legacy format.
 
 The test suite runs under **AddressSanitizer and UndefinedBehaviorSanitizer**
 on Linux. This is how defects 1, 2 and 3 above are demonstrated fixed.
@@ -403,19 +435,23 @@ The VS repository's remote is left in place and archived after the merge.
 
 Each stage leaves the tree compiling and testable.
 
-1. Scaffold, repository rename, history preservation, legacy sources imported.
-2. Core refactor: cross-platform timing, new API, colour support, new
-   container format. Golden regression test added. **The critical stage.**
-3. CLI and benchmark, including the JPEG baseline.
-4. Full test suite and CI.
-5. Qt GUI migration onto the new API.
-6. Documentation, README, Doxygen, release preparation.
+1. **Foundation** (partly done in `a2b975e`): repository rename on GitHub,
+   history preservation, the VS and CLion sources imported under `legacy/`
+   and `apps/prototype/`.
+2. **Core refactor**: the `include/blockcodec/` + `src/core/` layout, the new
+   value-semantic API, colour support, and the new `.bcc` container.
+   The golden regression test lands with it. **The critical stage.**
+3. **CLI and benchmark**, including the JPEG baseline.
+4. **Full test suite and CI**: GoogleTest, sanitizers, the multi-platform
+   workflow.
+5. **Qt GUI migration** onto the new API.
+6. **Documentation, README, Doxygen, release preparation.**
 
 ## 15. Risks
 
 | Risk | Mitigation |
 |------|------------|
-| The colour refactor changes existing single-channel output | The golden regression test compares against the retained legacy implementation bit-for-bit. |
+| The colour refactor changes existing single-channel output | The golden regression test compares block structure and reconstructed pixels against the retained legacy implementation (section 10.1). |
 | The gap-field width defect is hard to fix without changing the stream | Fix it in the new format, where the encoder and decoder derive the width from an explicitly transmitted value rather than from local state. The legacy stream is not read, so there is no compatibility constraint. |
 | The Qt GUI depends on internals that the refactor changes | The GUI is migrated last, once the public API is stable. |
 | Another session may be working in the same directory | The work committed in `a2b975e` is preserved; the refactor proceeds on top of it. |
