@@ -1,0 +1,435 @@
+# blockcodec — Design Specification
+
+**Date:** 2026-11-10
+**Status:** Approved
+**Supersedes:** the three separate `openCV_test` repositories described below
+
+---
+
+## 1. Motivation
+
+Three near-identical copies of the same block-based image codec exist in this
+workspace:
+
+| Path | IDE / Build | Shape | Git |
+|------|-------------|-------|-----|
+| `cpp/CLion/C++Programming/openCV_test` | CLion / CMake | Free functions, command line | Initialised, **zero commits**, no remote |
+| `cpp/VS_C++Project/test_openCV` | Visual Studio / `.sln` | Classes, batch benchmark | 1 commit, remote `ZajacMo/...-console` |
+| `cpp/QtProject/openCV_test` | Qt Creator / `.pro` | Classes + Qt GUI | 5 commits, remote `ZajacMo/...-Tool` |
+
+A file-by-file comparison after normalising source encoding shows the copies
+have drifted far enough apart to be a maintenance liability:
+
+| File | Qt vs VS (whitespace-insensitive) |
+|------|-----------------------------------|
+| `Block.cpp` / `Block.h` | identical |
+| `RBlock.cpp` / `RBlock.h` | identical |
+| `Bits.cpp` / `Bits.h` | 7 / 4 lines differ |
+| `Compress_gray.cpp` / `.h` | 39 / 8 lines differ |
+
+The `images/` directory (3.5 MB) is duplicated between the Qt and VS copies.
+
+The project is to become a **reusable open-source library** rather than a
+coursework folder with three folders.
+
+## 2. Goals
+
+1. One repository, one copy of the algorithm, three consumers.
+2. Support for colour images, which the current code claims but does not
+   deliver.
+3. A real command-line interface.
+4. A systematic benchmark suite with a JPEG baseline for context.
+5. Unit tests and continuous integration.
+6. English documentation and comments throughout.
+
+### Starting point
+
+Commit `a2b975e` ("make the codec reusable, portable and documented") landed
+in the Qt repository before this refactor began. It already provides:
+
+- A CMake build with a Qt-free static library `opencv_codec` beside the GUI.
+- `ALGORITHM.md`, a specification of the `.nam` container and the codec,
+  detailed enough to write an independent implementation.
+- A versioned reference vector (`tests/vectors/gradient_16x16`) that an
+  independent implementation must decode pixel for pixel.
+- A self-test and a sigma sweep benchmark.
+- A GitHub Actions workflow for Windows and Ubuntu.
+- Fixes for the heap overflow in `Bits::init`, the uninitialised read, the
+  PSNR divide-by-zero, the unvalidated dimensions and the GUI's window and
+  pointer leaks.
+
+That work is a sound foundation and is preserved. This specification builds on
+it: the remaining defects, colour support, the new container format, the CLI
+and the full test suite are what still need to be done.
+
+### Non-goals
+
+- Rewriting the compression algorithm itself. The RNAMC block model stays.
+- Backwards compatibility with the legacy `.nam` container.
+- Preserving the exact byte layout of the legacy container.
+- A plugin architecture or an abstract `Codec` interface with multiple
+  backends. One algorithm, one implementation.
+
+## 3. Naming
+
+The project is renamed **blockcodec**.
+
+- Repository: `ZajacMo/blockcodec`
+- CMake package: `blockcodec`
+- Library target: `blockcodec::blockcodec`
+- Namespace: `blockcodec`
+- CLI executable: `blockcodec`
+
+The name describes the block-based codec without binding the project to the
+current algorithm, so the algorithm can be replaced later without a rename.
+
+## 4. Repository layout
+
+```
+blockcodec/
+├── CMakeLists.txt
+├── CMakePresets.json
+├── include/blockcodec/           # public headers (the only public surface)
+│   ├── blockcodec.hpp             # umbrella header
+│   ├── codec.hpp                  # Codec, CompressOptions, CompressResult
+│   ├── format.hpp                 # container header definition
+│   └── segment.hpp                # segmentation visualisation
+├── src/
+│   ├── core/                      # the single copy of the algorithm
+│   │   ├── bitstream.cpp/.hpp
+│   │   ├── block.cpp/.hpp
+│   │   ├── rblock.cpp/.hpp
+│   │   └── codec.cpp
+│   ├── format.cpp
+│   └── segment.cpp
+├── apps/
+│   ├── cli/                       # blockcodec command line
+│   ├── qt/                        # Qt GUI (optional component)
+│   └── prototype/                 # legacy CLion prototype, not built by default
+├── tests/
+│   ├── vectors/                   # reference vectors
+│   └── ...
+├── bench/
+├── images/
+├── docs/
+│   ├── ALGORITHM.md
+│   └── ...
+└── legacy/                        # legacy sources kept for reference
+```
+
+`include/blockcodec/` is the only directory installed. Everything else is
+internal.
+
+## 5. Core API
+
+The current `Compress_gray` is a stateful object with a
+construct / initialise / compress / save sequence, and its `isNull` member is
+shadowed by a same-named local in `compress()` (`Compress_gray.cpp:246`). The
+new API is value-semantic and has no hidden state:
+
+```cpp
+namespace blockcodec {
+
+struct CompressOptions {
+    int sigma = 10;                 // tolerance for the block test
+};
+
+struct CompressResult {
+    std::size_t bit_size   = 0;    // bits in the payload
+    std::size_t byte_size  = 0;    // bytes in the container on disk
+    double      bpp        = 0;    // bits per pixel
+    double      cr         = 0;    // compression ratio
+    double      psnr       = 0;    // dB, infinity for a perfect reconstruction
+    double      compress_ms = 0;
+    double      decompress_ms = 0;
+    std::size_t block_count = 0;
+};
+
+class Codec {
+public:
+    explicit Codec(CompressOptions options = {});
+
+    CompressResult compress(const cv::Mat& source);
+    cv::Mat         decompress(const std::vector<std::uint8_t>& container);
+    cv::Mat         decompress(const std::string& path);
+
+    CompressResult  last_result() const;
+};
+
+}  // namespace blockcodec
+```
+
+Errors are reported by throwing `std::runtime_error` with an English message.
+The CLI translates an exception into a non-zero exit code and a one-line
+message; the GUI catches it and shows it in a message box.
+
+## 6. Colour support
+
+This is the largest functional change and the one with the most risk.
+
+### 6.1 The problem with the current code
+
+`init_compress` sets `cols = img.cols * img.channels()`, so a colour image is
+treated as one wide row of interleaved samples. The block model assumes a
+spatial neighbourhood, so a block can straddle a pixel boundary and the
+"corner colours" are misaligned. The GUI offers a colour option that
+produces a technically encoded but semantically meaningless result.
+
+### 6.2 Design
+
+Pixels and channels are decoupled. `cols` is always the image width; the
+channel count is a separate axis.
+
+- `RBlock`'s `uchar color[2][2]` becomes `uchar color[2][2][C]`
+  (4 corners x C channels).
+- `isBlock` interpolates each channel separately and compares the **maximum
+  absolute deviation across channels** against `sigma`.
+- `regain` reconstructs each channel by bilinear interpolation.
+- `init_compress` sets `cols = img.cols`; the channel count no longer
+  participates in the width computation.
+
+Using the maximum deviation rather than a Euclidean distance is deliberate: for
+a single-channel image the two definitions coincide, so **single-channel
+behaviour is bit-for-bit unchanged**. The golden regression test relies on
+this property.
+
+### 6.3 Metric definitions
+
+```
+bpp  = total_bits / (rows * cols)
+cr   = (rows * cols * channels * depth_bits) / total_bits
+psnr = 10 * log10(255^2 * rows * cols * channels / sum(diff^2))
+```
+
+`bpp` counts all channels, so a colour image is not flattered by the
+denominator.
+
+This corrects two defects in the current code:
+
+1. The legacy `getRate()` returns **bytes per pixel** (`getWriteLen() / ... /
+   8.0`) but the README reports it as "bits per pixel". The CR formula
+   `8.0 / BPP` inherits the factor-of-eight error.
+2. The VS variant multiplies by `img.channels()` a second time even though
+   `cols` already includes the channel count, so its CR is wrong by the
+   channel factor on colour images. On greyscale images the two agree, which
+   is why the bug went unnoticed.
+
+The CLion prototype's `BPP()` is the closest to correct and is used as the
+reference definition.
+
+## 7. File format
+
+A new container, `.bcc`, replaces `.nam`. The legacy format is not read.
+
+```
+offset  size  field
+0       4     magic       "BCC\0"
+4       1     version     0x01
+5       1     flags       bit 0: colour (multi-channel)
+6       4     rows        uint32, little-endian
+10      4     cols        uint32, little-endian  (pixel width, not channels)
+14      1     channels    uint8
+15      1     depth_bits  uint8  (8 / 16 / 32 / 64)
+16      n     payload     densely packed bitstream
+```
+
+The payload is **densely packed**: the legacy format stored one ASCII
+`'0'`/`'1'` character per bit, making the file eight times larger than the
+bitstream it carried. The new format packs eight bits per byte.
+
+The container length is not stored; the decoder derives it from the file size
+and validates the header before allocating. A decoder must reject a file
+whose declared dimensions imply more than `kMaxPixels` (268 megapixels).
+
+## 8. Defects to fix
+
+These were found by reading the code and are not optional cleanups; an
+open-source library must not ship them.
+
+**Already fixed** in commit `a2b975e` ("make the codec reusable, portable and
+documented"), which landed before this refactor began:
+
+1. ~~**Heap overflow in `Bits::init`**~~ — the buffer was allocated as
+   `new char[pow(1024, size) * 10]` (a fixed 10 MB) and then filled with an
+   unbounded `in >> loadedInfo`. A file larger than the guess overflowed the
+   buffer. This was remotely triggerable with a crafted file. **Fixed**: the
+   buffer is now sized from the real file length, zeroed, and a failed open
+   is reported.
+2. ~~**Read of uninitialised memory**~~ — **Fixed**: the buffer is zeroed and
+   its length comes from the file size rather than from `strlen`.
+3. ~~**PSNR divides by zero**~~ on a perfect reconstruction (`log10(x/0)`).
+   **Fixed**: returns `infinity`, and mismatched or empty inputs are rejected.
+4. ~~**Unvalidated dimensions from the file**~~ — **Fixed**: the decoder
+   validates the header and rejects dimensions above `kMaxPixels`.
+5. ~~**`windows.h` in a public header** — **Mostly fixed**: the timer uses
+   `std::chrono::steady_clock`. The `#include <windows.h>` remains, but is
+   guarded by `#ifdef _WIN32` and is no longer required by the implementation.
+   It is removed entirely by the core rewrite.
+
+**Still outstanding**, and part of this work:
+
+6. **Gap field width can desynchronise the stream** — the width `b` of the
+   gap field is recomputed from the decoder's current position
+   (`cols - col - 1`). An encoder and a decoder that disagree about the
+   position disagree about the width, and the stream desynchronises. This is
+   the most likely source of incompatibility between implementations.
+7. **`isColorful` is inferred, not stored** — the legacy decoder guesses
+   colour from `cols > rows`, which is wrong for any landscape image. The new
+   container stores the channel count explicitly.
+8. **No end marker in the payload** — a truncated file decoded to a partial
+   image without error. The new format validates the payload length.
+9. **The metrics are wrong** — see section 6.3. `getRate()` still returns
+   bytes per pixel while being documented as bits per pixel, and the VS
+   variant double-counts the channel factor.
+10. **The GUI leaked its sub-windows** and dereferenced uninitialised
+    `Compress_gray` pointers in their destructors. **Fixed** in `a2b975e`.
+11. **`operatorsignals.cpp` was both compiled separately and `#include`d**,
+    producing duplicate symbols. **Fixed** in `a2b975e`.
+
+## 9. Applications
+
+### 9.1 Command line
+
+```
+blockcodec compress   <input> -o <out.bcc> [--sigma N] [--quiet]
+blockcodec decompress <in.bcc>  -o <out.png> [--compare <reference>]
+blockcodec info       <in.bcc>
+blockcodec benchmark  [--images DIR] [--sigmas 1,5,10,20,30,50]
+                      [--baseline jpeg] [--csv out.csv]
+```
+
+Argument parsing uses **CLI11** (header-only, fetched with `FetchContent`).
+Hand-written parsing is error-prone around edge cases and is not worth the
+code.
+
+`decompress --compare` additionally computes the PSNR against a reference
+image.
+
+### 9.2 Benchmark
+
+The benchmark sweeps an image set across a sigma grid and reports, per
+combination: dimensions, sigma, encoded size, BPP, CR, PSNR, encode and
+decode time, and block count. Results are written as CSV and as a table.
+
+With `--baseline jpeg`, the same images are additionally encoded by OpenCV's
+JPEG encoder at several quality levels, and the report places blockcodec and
+JPEG side by side at comparable PSNR. Without that comparison a compression
+library has no reference point for how good its numbers are.
+
+The existing VS-version sweep (10 images x 6 sigma values) is the starting
+point for this tool.
+
+### 9.3 Qt GUI
+
+Kept as an example application, gated behind `BLOCKCODEC_BUILD_QT` (default
+`ON` locally, exercised separately in CI).
+
+- Calls `blockcodec::Codec` directly; no dependency on the core internals.
+- The existing colour / greyscale buttons become genuinely functional.
+- Metric labels state their units explicitly ("bits/pixel", "compression
+  ratio") so the byte/bit ambiguity is not repeated in the UI.
+- Image resources are located relative to the executable instead of a
+  hard-coded path.
+
+## 10. Tests
+
+GoogleTest, fetched with `FetchContent`.
+
+| Suite | Coverage |
+|-------|----------|
+| Golden regression | The legacy single-channel implementation is retained as an oracle; both implementations run on the same image and their bitstreams must be **bit-for-bit identical**. This is the safety net for the colour refactor. |
+| Bitstream | write/read symmetry, every field width, crossing the 1024-bit vector boundary |
+| Round trip | Greyscale and colour: dimensions and channel count preserved, PSNR above a floor, block count consistent |
+| Container | header serialisation round trip, magic and version validation |
+| Robustness | Truncated files, wrong magic, wrong version, absurd dimensions: must throw, never crash |
+| Fuzzing | Random bytes and truncations of a valid file: must fail cleanly, no undefined behaviour |
+| Metrics | BPP, CR and PSNR checked against hand-computed values for known inputs |
+
+The test suite runs under **AddressSanitizer and UndefinedBehaviorSanitizer**
+on Linux. This is how defects 1, 2 and 3 above are demonstrated fixed.
+
+## 11. Continuous integration
+
+GitHub Actions:
+
+```
+ci.yml
+├── build-test   ubuntu-latest (gcc, clang) and windows-latest (MSVC)
+│                configure -> build -> ctest
+├── sanitizers   ubuntu-latest, ASan + UBSan
+├── qt-build     aqtinstall for Qt 6, builds apps/qt, allowed to fail
+└── format       clang-format check
+```
+
+The Windows job is required because the code was developed there, but the core
+must be portable, which is why `windows.h` is removed.
+
+## 12. Packaging and documentation
+
+- `install` target with `export(blockcodecTargets)` and a version file, so
+  downstream projects can use `find_package(blockcodec)`.
+- Doxygen API documentation, generated by an optional CMake target.
+- `README.md` and `README_CN.md`: algorithm overview, build instructions,
+  measured benchmark tables including the JPEG comparison, and usage
+  examples.
+- `ALGORITHM.md`: the format and algorithm specification, so an independent
+  implementation can be written against it.
+- `CONTRIBUTING.md`, `CHANGELOG.md`, `.clang-format`, issue and pull request
+  templates.
+- The existing MIT licence is retained (Copyright (c) 2024 Zajac Mo).
+
+**All documentation and source comments are written in English.** The Chinese
+README remains as a translation; Chinese comments in the source are removed.
+
+## 13. Git history
+
+The Qt repository is the base: it has the best history and already carries the
+licence and the README.
+
+1. Rename the GitHub repository to `blockcodec`. GitHub redirects the old URL
+   automatically, so **no history rewrite and no force-push are required**.
+2. Fetch the VS repository and merge with `--allow-unrelated-histories`, so
+   its single commit enters the main history. Its original sources are kept
+   under `legacy/vs-console/` for reference before being superseded by the
+   new CLI.
+3. Commit the CLion prototype (currently zero commits, no remote, and
+   therefore at risk of loss) under `apps/prototype/`, with a `PROTOTYPE.md`
+   explaining how its functions correspond to the new implementation.
+4. Land the refactor as a distinct, well-described commit.
+
+The VS repository's remote is left in place and archived after the merge.
+
+## 14. Delivery order
+
+Each stage leaves the tree compiling and testable.
+
+1. Scaffold, repository rename, history preservation, legacy sources imported.
+2. Core refactor: cross-platform timing, new API, colour support, new
+   container format. Golden regression test added. **The critical stage.**
+3. CLI and benchmark, including the JPEG baseline.
+4. Full test suite and CI.
+5. Qt GUI migration onto the new API.
+6. Documentation, README, Doxygen, release preparation.
+
+## 15. Risks
+
+| Risk | Mitigation |
+|------|------------|
+| The colour refactor changes existing single-channel output | The golden regression test compares against the retained legacy implementation bit-for-bit. |
+| The gap-field width defect is hard to fix without changing the stream | Fix it in the new format, where the encoder and decoder derive the width from an explicitly transmitted value rather than from local state. The legacy stream is not read, so there is no compatibility constraint. |
+| The Qt GUI depends on internals that the refactor changes | The GUI is migrated last, once the public API is stable. |
+| Another session may be working in the same directory | The work committed in `a2b975e` is preserved; the refactor proceeds on top of it. |
+
+## 16. Environment
+
+Verified on this machine:
+
+- OpenCV 4.10.0 at `C:\Program Files\opencv`
+- Qt 6.6.2 (msvc2019_64) at `C:\Qt\6.6.2`
+- MSVC 14.44 (Build Tools 2022) with `vcvars64.bat`
+- CMake 3.31.6, 16 cores
+- Network access confirmed for `FetchContent`
+
+Note that the `qmake` on `PATH` belongs to an Anaconda Qt 5.15.2
+installation and is **not** the Qt 6 used by the project. Builds must point at
+`C:\Qt\6.6.2\msvc2019_64`.
