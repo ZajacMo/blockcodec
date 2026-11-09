@@ -195,27 +195,40 @@ the quality dial and the size dial at once.
 Measured on the bundled 512x512 samples, with the numbers produced by
 `bench_sweep`:
 
-| `sigma` | lena512 ratio | lena512 PSNR | baboon ratio | baboon PSNR |
-|---------|---------------|--------------|--------------|-------------|
-| 1 | 1.565 | 59.23 dB | 1.675 | 67.26 dB |
-| 5 | 0.810 | 42.29 dB | 1.508 | 46.81 dB |
-| 10 | 0.381 | 36.39 dB | 1.213 | 38.48 dB |
-| 20 | 0.176 | 30.38 dB | 0.806 | 31.26 dB |
-| 30 | 0.108 | 26.69 dB | 0.569 | 27.30 dB |
-| 50 | 0.050 | 22.36 dB | 0.311 | 22.56 dB |
+| `sigma` | lena512 bits | lena512 file vs raw | lena512 PSNR | baboon bits | baboon file vs raw | baboon PSNR |
+|---------|--------------|---------------------|--------------|-------------|--------------------|-------------|
+| 1 | 3 282 134 | 12.52x | 59.23 dB | 3 512 520 | 13.40x | 67.26 dB |
+| 5 | 1 699 187 | 6.48x | 42.29 dB | 3 161 627 | 12.06x | 46.81 dB |
+| 10 | 799 631 | 3.05x | 36.39 dB | 2 543 844 | 9.70x | 38.48 dB |
+| 20 | 368 150 | 1.40x | 30.38 dB | 1 689 296 | 6.44x | 31.26 dB |
+| 30 | 226 626 | 0.86x | 26.69 dB | 1 194 116 | 4.56x | 27.30 dB |
+| 50 | 103 842 | 0.40x | 22.36 dB | 652 517 | 2.49x | 22.56 dB |
 
-"Ratio" is the compressed size divided by the raw size, so a value below 1.0
-means the file got smaller.
+"file vs raw" is the size of the `.nam` file divided by the size of the raw
+pixel data, so a value **below 1.0 means the file is smaller than the
+original**. The PSNR is measured between the original and the
+reconstruction.
 
-Two results are worth calling out:
+Three results are worth calling out:
 
-- **A small `sigma` can make the file bigger.** At `sigma = 1` the per-block
-  overhead dominates and the ratio exceeds 1.0. The codec only starts paying
-  for itself once the blocks are large enough to amortise their own
-  description.
+- **The text container costs a factor of eight.** The `.nam` format stores one
+  ASCII character per bit, so a 3 282 134-bit stream occupies 3 282 135
+  bytes on disk. The *bitstream* is what the codec produces; the *file* is
+  eight times larger because of that encoding.
+- **A small `sigma` makes the file much bigger.** At `sigma = 1` the file is
+  12.5x the size of the original pixels, because every block costs far more
+  to describe than the pixels it replaces. Only from about `sigma = 30`
+  does the format become smaller than the raw image, and only at a
+  substantial quality cost.
 - **The useful `sigma` depends on the image.** The smooth `lena512`
   compresses far better than the textured `baboonzyp512` at the same
   tolerance, because a textured image offers few large uniform rectangles.
+
+> **Note on `getRate()`.** The `getRate()` method inherited from the
+> original code returns `bytes per pixel`, not a compression ratio, and it
+> reports the bitstream length rather than the size of the file on disk.
+> The table above uses the on-disk size, which is the number that matters to
+> a user. See [ALGORITHM.md §9.8](ALGORITHM.md#98-getrate-reports-bytes-per-pixel-not-a-compression-ratio).
 
 The exact bitstream layout is specified in **[ALGORITHM.md](ALGORITHM.md)**.
 
@@ -333,8 +346,14 @@ benchmark:
 - **No version marker or checksum.** A truncated file decodes to a partial
   image without an error. See
   [ALGORITHM.md §9.3](ALGORITHM.md#93-the-payload-has-no-end-marker).
-- **The per-block overhead dominates small images.** For a 16x16 sample the
-  ratio is around 0.87, so the codec only makes sense for larger images.
+- **Per-block overhead dominates small images.** For a 16x16 sample the file is
+  larger than the raw pixels. The codec only becomes worthwhile on images of
+  a few hundred pixels across, and only at a tolerance that visibly degrades
+  the image.
+- **`getRate()` reports bytes per pixel, not a compression ratio**, and it is
+  based on the bitstream length rather than the size of the file on disk. The
+  tables above use the on-disk size. See
+  [ALGORITHM.md §9.8](ALGORITHM.md#98-getrate-reports-bytes-per-pixel-not-a-compression-ratio).
 - **`isColorful` is inferred from the image dimensions**, not stored in the
   file. See [ALGORITHM.md §9.2](ALGORITHM.md#92-iscolorful-is-inferred-not-stored).
 

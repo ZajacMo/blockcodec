@@ -30,24 +30,28 @@ dials of the same parameter, `sigma`:
 | large (e.g. 50) | Coarse blocks are accepted | Small files, lower PSNR |
 
 Measured on `images/lena512.bmp` (512x512) and `images/baboonzyp512.bmp`
-(512x512) with this implementation. "Ratio" is the compressed size divided
-by the raw size, so a value below 1.0 means the file got smaller.
+(512x512) with this implementation. "File vs raw" is the size of the `.nam`
+file on disk divided by the size of the raw pixel data, so a value **below
+1.0 means the file is smaller than the original**.
 
-| `sigma` | lena512 ratio | lena512 PSNR | baboon ratio | baboon PSNR |
-|---------|---------------|--------------|--------------|-------------|
-| 1 | 1.565 | 59.23 dB | 1.675 | 67.26 dB |
-| 5 | 0.810 | 42.29 dB | 1.508 | 46.81 dB |
-| 10 | 0.381 | 36.39 dB | 1.213 | 38.48 dB |
-| 20 | 0.176 | 30.38 dB | 0.806 | 31.26 dB |
-| 30 | 0.108 | 26.69 dB | 0.569 | 27.30 dB |
-| 50 | 0.050 | 22.36 dB | 0.311 | 22.56 dB |
+| `sigma` | lena512 bits | lena512 file vs raw | lena512 PSNR | baboon bits | baboon file vs raw | baboon PSNR |
+|---------|--------------|---------------------|--------------|-------------|--------------------|-------------|
+| 1 | 3 282 134 | 12.52x | 59.23 dB | 3 512 520 | 13.40x | 67.26 dB |
+| 5 | 1 699 187 | 6.48x | 42.29 dB | 3 161 627 | 12.06x | 46.81 dB |
+| 10 | 799 631 | 3.05x | 36.39 dB | 2 543 844 | 9.70x | 38.48 dB |
+| 20 | 368 150 | 1.40x | 30.38 dB | 1 689 296 | 6.44x | 31.26 dB |
+| 30 | 226 626 | 0.86x | 26.69 dB | 1 194 116 | 4.56x | 27.30 dB |
+| 50 | 103 842 | 0.40x | 22.36 dB | 652 517 | 2.49x | 22.56 dB |
 
-Two things worth noticing:
+Three things worth noticing:
 
-- **A small `sigma` can make the file larger.** At `sigma = 1` the header
-  and per-block overhead dominate and the ratio exceeds 1.0. The codec only
-  starts paying for itself once the blocks it finds are big enough to
-  amortise their own description.
+- **The container costs a factor of eight.** The bitstream is what the codec
+  produces; the `.nam` file stores one ASCII character per bit, so it is
+  eight times larger on disk than the bitstream it carries.
+- **A small `sigma` makes the file much larger.** At `sigma = 1` every block
+  costs more to describe than the pixels it replaces, and the file is 12.5x
+  the size of the original. Only from roughly `sigma = 30` does the format
+  become smaller than the raw image, at a noticeable quality cost.
 - **The useful `sigma` depends on the image.** The smooth `lena512`
   compresses far better than the textured `baboonzyp512` at the same
   tolerance, because a textured image offers few large uniform rectangles.
@@ -381,3 +385,26 @@ does not affect the compressed output.
 The original implementation allocated memory sized directly from the header
 without validation, so a corrupt file could request an enormous
 allocation. This has been fixed; see [§7](#7-decoder-requirements).
+
+### 9.8 `getRate()` reports bytes per pixel, not a compression ratio
+
+`getRate()` is inherited from the original implementation and computes
+
+```
+getRate() = bitstream_bits / (rows * cols * 8)
+```
+
+which is a **bytes-per-pixel** figure, not a ratio, and it is based on the
+bitstream length rather than on the size of the file on disk. Because the
+container stores one byte per bit, the two differ by a factor of eight.
+
+The number is used unchanged here, because changing it would change the
+behaviour the GUI reports. Consumers that need a true compression ratio
+should divide the size of the file on disk by the size of the raw pixel
+data, as `bench_sweep` does.
+
+### 9.9 The bitstream length is reported in bits, not bytes
+
+`getWriteLen()` returns the number of *bits* produced by the encoder, which
+is why the `.nam` file it produces is eight times that many bytes. The
+method is named `getWriteLen` rather than `getWriteBytes` for that reason.
