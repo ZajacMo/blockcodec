@@ -245,17 +245,37 @@ offset  size  field
 6       4     rows        uint32, little-endian
 10      4     cols        uint32, little-endian  (pixel width, not channels)
 14      1     channels    uint8
-15      1     depth_bits  uint8  (8 / 16 / 32 / 64)
-16      n     payload     densely packed bitstream
+15      1     depth_bits  uint8  (8 / 16 / 32)
+16      4     block_count uint32, little-endian
+20      n     payload     densely packed bitstream
 ```
 
 The payload is **densely packed**: the legacy format stored one ASCII
 `'0'`/`'1'` character per bit, making the file eight times larger than the
 bitstream it carried. The new format packs eight bits per byte.
 
-The container length is not stored; the decoder derives it from the file size
-and validates the header before allocating. A decoder must reject a file
-whose declared dimensions imply more than `kMaxPixels` (268 megapixels).
+The payload is a sequence of blocks. Each block is written as:
+
+```
+start_row     row_bits
+start_col     col_bits
+width - 1     width_bits
+height - 1    height_bits
+corners       8 bits each
+```
+
+`row_bits`, `col_bits`, `width_bits` and `height_bits` are all derived from
+the header's `rows` and `cols` by the rule "the number of bits needed to
+represent the largest value in range", and are therefore identical on both
+sides **without either side depending on its own position**. This is what
+removes the implicit coupling of the legacy format.
+
+`corners` holds four samples per channel in the order top-left, top-right,
+bottom-left, bottom-right. A block that is a single pixel holds one sample
+per channel instead, since all four corners are the same pixel.
+
+The block count is stored in the header, so the decoder knows exactly how
+many blocks to read and never has to guess where the payload ends.
 
 ## 8. Defects to fix
 
@@ -305,9 +325,13 @@ documented"), which landed before this refactor began:
 9. **The metrics are ambiguous** — see section 6.3. Bits, bytes and the
    channel factor are conflated.
 10. **`Bits::write` shifts past the width of `int`** — `info & (1 << i)` is
-    undefined behaviour for `i == 31`, and `getDepth()` may return 64, so
-    `write(value, 64)` would evaluate `1 << 63`. The new bit writer uses
-    `std::uint64_t` and shifts within the type's width.
+    undefined behaviour for `i == 31`. This is **not reachable in the legacy
+    code**: every call site uses a width of at most 16, because the gap width
+    is bounded by the 16-bit column field and the depth is guarded to 8 bits
+    on the encode path. It becomes reachable as soon as the new container
+    supports a `depth_bits` greater than 8, so the new bit writer uses
+    `std::uint64_t` and shifts within the type's width. The requirement
+    belongs to the new bit writer's design, not to the legacy defect list.
 11. **The GUI leaked its sub-windows** and dereferenced uninitialised
     `Compress_gray` pointers in their destructors. **Fixed** in `a2b975e`.
 12. **`operatorsignals.cpp` was both compiled separately and `#include`d**,
@@ -383,7 +407,7 @@ GoogleTest, fetched with `FetchContent`.
 | Round trip | Greyscale and colour: dimensions and channel count preserved, PSNR above a floor, block count consistent |
 | Container | header serialisation round trip, magic and version validation |
 | Robustness | Truncated files, wrong magic, wrong version, absurd dimensions: must throw, never crash |
-| Landscape greyscale | A 256x128 greyscale image must round-trip with `channels == 1`. The legacy decoder inferred colour from `cols > rows` and misreported every image wider than it is tall; the existing test images are all square, so this case was never covered. |
+| Landscape greyscale | A 256x128 greyscale image must round-trip with `channels == 1`. The legacy decoder inferred colour from `cols > rows` and misreported every image wider than it is tall; the existing test images are all square, so this case was never covered. **The assertion must target the channel count carried by the container, not the decoded matrix.** The legacy decoder always allocates a single channel result, so `decoded.channels() == 1` holds even when the inference is wrong and the assertion would prove nothing. |
 | Fuzzing | Random bytes and truncations of a valid file: must fail cleanly, no undefined behaviour |
 | Metrics | BPP, CR and PSNR checked against hand-computed values for known inputs |
 
@@ -453,9 +477,9 @@ licence and the README.
 1. Rename the GitHub repository to `blockcodec`. GitHub redirects the old URL
    automatically, so **no history rewrite and no force-push are required**.
    The repository is currently `ZajacMo/OpenCV-Image-Processing-and-Compression-Tool-Qt`
-   (it was renamed from `...-Tool` and the local `origin` still holds the
-   older name; GitHub follows the redirect, but the URL is updated locally
-   as well).
+   (renamed from `...-Tool`; the local `origin` still holds the older name).
+   Both names resolve to the same commit because GitHub follows the
+   redirect, and the local URL is updated to the current name.
 2. Fetch the VS repository and merge with `--allow-unrelated-histories`, so
    its single commit enters the main history. Its original sources are kept
    under `legacy/vs-console/` for reference before being superseded by the
