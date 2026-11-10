@@ -106,3 +106,6 @@ cmake-build-*/
 /bench_output.txt
 /bench_test*.csv
 /bench_test*.txt
+
+# Downloaded archives
+*.zip
