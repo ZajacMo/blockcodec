@@ -435,13 +435,18 @@ against the mistake it is meant to catch.
 Whether a given block distinguishes the two rules is decided by its corner
 values, not by its size.
 
-The two rules differ exactly where truncating one of the two edge
-interpolations to a byte would change it, that is, where that edge value is
-not already an integer. The first rule truncates the left and the right
-edge, and then interpolates across; the second interpolates everything in
-full precision and truncates once. If both edge values are already
-integers, the two procedures are the same, because truncating the edges is
-the only thing the first rule does that the second does not.
+The first rule truncates the left and the right edge to a byte, and then
+interpolates across; the second interpolates everything in full precision
+and truncates once. If both edge values are already integers, the two
+procedures are the same, because truncating the edges is the only thing
+the first rule does that the second does not. That case was checked over
+forty million random blocks and never contradicted.
+
+A fractional edge value is necessary for the two rules to differ, but it
+is not sufficient: they differ exactly where the fractional parts of the
+two edge interpolations push the truncated span across an integer
+boundary. Whether that happens depends on where the span happens to fall,
+so a block whose edges are fractional may or may not distinguish them.
 
 Note that this is a statement about the edge **values**, not about the
 ratios that produced them. A ratio such as 7/16 is exactly representable
