@@ -124,6 +124,26 @@ TEST(Codec, ColourCostsTheSameAsGreyscale) {
     EXPECT_NEAR(colour_result.psnr, grey_result.psnr, 1e-6);
 }
 
+TEST(Codec, ReportsTheSameMetricsWhenDecoding) {
+    // The decoder must report the same bits per pixel and compression ratio
+    // as the encoder, or two tools reading the same container would
+    // disagree about it.
+    const cv::Mat source = make_gradient(64, 64, 1);
+
+    Codec codec;
+    CompressResult encoded;
+    const std::vector<std::uint8_t> container = codec.compress(source, &encoded);
+
+    CompressResult decoded_result;
+    codec.decompress(container, &decoded_result);
+
+    EXPECT_EQ(decoded_result.bit_size, encoded.bit_size);
+    EXPECT_EQ(decoded_result.byte_size, encoded.byte_size);
+    EXPECT_EQ(decoded_result.block_count, encoded.block_count);
+    EXPECT_DOUBLE_EQ(decoded_result.bpp, encoded.bpp);
+    EXPECT_DOUBLE_EQ(decoded_result.cr, encoded.cr);
+}
+
 TEST(Codec, RejectsAnEmptyImage) {
     Codec codec;
     EXPECT_THROW(codec.compress(cv::Mat()), std::runtime_error);

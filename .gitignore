@@ -55,9 +55,14 @@ compile_commands.json
 # ...but reference test vectors are versioned on purpose.
 !tests/vectors/*.nam
 
+# Compressed codec output (.bcc)
+*.bcc
+
 # Sample / scratch output
 result.nam
 compressed.nam
+result.bcc
+compressed.bcc
 *.bmp.tmp
 desktop.ini
 Thumbs.db

@@ -5,7 +5,10 @@
 #include<QFile>
 #include<QTextStream>
 #include<QFileDialog>
-#include "Compress_gray.h"
+
+#include "blockcodec/codec.hpp"
+
+#include <opencv2/core.hpp>
 
 namespace Ui {
 class uncompressWindow;
@@ -34,8 +37,10 @@ private slots:
 
 private:
     Ui::uncompressWindow *ui;
-    Compress_gray* ucg = nullptr;
     QString fileName;
+    // The decoded image, held so that it can be saved without being
+    // decoded a second time.
+    cv::Mat m_decoded;
 };
 
 #endif // UNCOMPRESSWINDOW_H

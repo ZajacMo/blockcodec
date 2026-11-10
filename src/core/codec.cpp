@@ -260,7 +260,11 @@ cv::Mat Codec::decompress(const std::vector<std::uint8_t>& container,
     }
 
     if (result != nullptr) {
+        result->bit_size = required_bits;
         result->byte_size = container.size();
+        result->bpp = bpp(result->bit_size, rows, cols);
+        result->cr = compression_ratio(result->bit_size, rows, cols, channels,
+                                        header.depth_bits);
         result->block_count = header.block_count;
         result->decompress_ms = (now_seconds() - started) * 1000.0;
         result->blocks = std::move(extents);

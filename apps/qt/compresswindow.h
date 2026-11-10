@@ -13,8 +13,13 @@
 #include<QTextStream>
 #include<QFileDialog>
 #include <QAbstractButton>
-#include "Compress_gray.h"
 
+#include "blockcodec/codec.hpp"
+
+#include <opencv2/core.hpp>
+
+#include <cstdint>
+#include <vector>
 
 namespace Ui {
 class CompressWindow;
@@ -54,7 +59,13 @@ private:
     QPixmap m_pix2show;
     QString strFileName;
     QString savePath;
-    Compress_gray* cg = nullptr;
+    // The encoded container. It is kept so that the image does not have to
+    // be encoded a second time to be saved or to be previewed.
+    std::vector<std::uint8_t> m_container;
+    // The measurements of the last encoding.
+    blockcodec::CompressResult m_result;
+    // The image that was encoded, kept so that the round trip can be scored.
+    cv::Mat m_source;
     // Maximum tolerated deviation
     double sigma = 10;
     // 1 = colour, 0 = greyscale

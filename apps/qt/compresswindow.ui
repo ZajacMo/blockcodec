@@ -242,10 +242,9 @@ while compressing!!</string>
              <item>
               <widget class="QLabel" name="label_2">
                <property name="text">
-                <string>Original size:    </string>
+                <string>Original size (bytes):</string>
                </property>
-              </widget>
-             </item>
+              </widget>             </item>
              <item>
               <widget class="Line" name="line">
                <property name="orientation">
@@ -292,7 +291,7 @@ while compressing!!</string>
              <item>
               <widget class="QLabel" name="label_3">
                <property name="text">
-                <string>Compressed size:   </string>
+                <string>Compressed size (bytes):</string>
                </property>
               </widget>
              </item>
@@ -305,6 +304,20 @@ while compressing!!</string>
              </item>
              <item>
               <widget class="QLabel" name="label_5">
+               <property name="text">
+                <string>Bits per pixel:</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="Line" name="line_5">
+               <property name="orientation">
+                <enum>Qt::Horizontal</enum>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="label_6">
                <property name="text">
                 <string>Compression ratio:</string>
                </property>
@@ -330,6 +343,20 @@ while compressing!!</string>
              </item>
              <item>
               <widget class="QLabel" name="compressRate">
+               <property name="text">
+                <string/>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="Line" name="line_6">
+               <property name="orientation">
+                <enum>Qt::Horizontal</enum>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="compressRatio">
                <property name="text">
                 <string/>
                </property>

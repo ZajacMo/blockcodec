@@ -58,7 +58,7 @@
              <item>
               <widget class="QLabel" name="label_2">
                <property name="text">
-                <string>Original file size:</string>
+                <string>Original file size (bytes):</string>
                </property>
               </widget>
              </item>
@@ -86,7 +86,7 @@
              <item>
               <widget class="QLabel" name="label_3">
                <property name="text">
-                <string>Decoded size:</string>
+                <string>Decoded size (bytes):</string>
                </property>
               </widget>
              </item>
@@ -99,6 +99,20 @@
              </item>
              <item>
               <widget class="QLabel" name="label_5">
+               <property name="text">
+                <string>Bits per pixel:</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="Line" name="line_7">
+               <property name="orientation">
+                <enum>Qt::Horizontal</enum>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="label_6">
                <property name="text">
                 <string>Compression ratio:</string>
                </property>
@@ -152,6 +166,20 @@
              </item>
              <item>
               <widget class="QLabel" name="rate">
+               <property name="text">
+                <string/>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="Line" name="line_8">
+               <property name="orientation">
+                <enum>Qt::Horizontal</enum>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="compressRatio">
                <property name="text">
                 <string/>
                </property>

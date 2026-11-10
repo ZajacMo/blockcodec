@@ -82,9 +82,9 @@ target_include_directories(blockcodec_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(blockcodec_bench PRIVATE blockcodec)
 
 # ---------------------------------------------------------------------------
-# legacy_codec - the previous implementation, kept for the GUI and as the
-# oracle of the golden regression test. It is removed once the GUI has been
-# migrated and the golden test has served its purpose.
+# legacy_codec - the previous implementation, kept as the oracle of the
+# golden regression test and of the legacy test tools. The GUI no longer
+# uses it; it was migrated onto the blockcodec API.
 # ---------------------------------------------------------------------------
 add_library(legacy_codec STATIC
     tests/legacy/Compress_gray.cpp
@@ -98,41 +98,50 @@ target_link_libraries(legacy_codec PUBLIC ${OpenCV_LIBS})
 set_target_properties(legacy_codec PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # ---------------------------------------------------------------------------
-# Qt GUI application
+# blockcodec_gui - the Qt GUI application
 # ---------------------------------------------------------------------------
+option(BLOCKCODEC_BUILD_GUI "Build the Qt GUI example" ON)
+# The old spelling, kept so that the existing CI workflow keeps working.
+option(BUILD_GUI_APP "Deprecated alias for BLOCKCODEC_BUILD_GUI" OFF)
 if(BUILD_GUI_APP)
+    set(BLOCKCODEC_BUILD_GUI ON)
+endif()
+
+if(BLOCKCODEC_BUILD_GUI)
     find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core Gui Widgets)
     find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Gui Widgets)
 
-    set(CMAKE_AUTOUIC_SEARCH_PATHS ${CMAKE_CURRENT_SOURCE_DIR})
+    set(CMAKE_AUTOUIC_SEARCH_PATHS ${CMAKE_CURRENT_SOURCE_DIR}/apps/qt)
 
-    add_executable(openCV_test WIN32 MACOSX_BUNDLE
-        main.cpp
-        mainwindow.cpp
-        mainwindow.h
-        mainwindow.ui
-        compresswindow.cpp
-        compresswindow.h
-        compresswindow.ui
-        uncompresswindow.cpp
-        uncompresswindow.h
-        uncompresswindow.ui
-        introducewindow.cpp
-        introducewindow.h
-        introducewindow.ui
-        helpwindow.cpp
-        helpwindow.h
-        helpwindow.ui
-        save.cpp
-        save.h
-        operatorsignals.cpp
-        operatorsignals.h
-        resourses.qrc
+    add_executable(blockcodec_gui WIN32 MACOSX_BUNDLE
+        apps/qt/main.cpp
+        apps/qt/mainwindow.cpp
+        apps/qt/mainwindow.h
+        apps/qt/mainwindow.ui
+        apps/qt/compresswindow.cpp
+        apps/qt/compresswindow.h
+        apps/qt/compresswindow.ui
+        apps/qt/uncompresswindow.cpp
+        apps/qt/uncompresswindow.h
+        apps/qt/uncompresswindow.ui
+        apps/qt/introducewindow.cpp
+        apps/qt/introducewindow.h
+        apps/qt/introducewindow.ui
+        apps/qt/helpwindow.cpp
+        apps/qt/helpwindow.h
+        apps/qt/helpwindow.ui
+        apps/qt/imagedisplay.h
+        apps/qt/save.cpp
+        apps/qt/save.h
+        apps/qt/save.ui
+        apps/qt/operatorsignals.cpp
+        apps/qt/operatorsignals.h
+        apps/qt/resourses.qrc
     )
 
-    target_include_directories(openCV_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    target_link_libraries(openCV_test PRIVATE
-        legacy_codec
+    target_include_directories(blockcodec_gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/apps/qt)
+    target_link_libraries(blockcodec_gui PRIVATE
+        blockcodec
         Qt${QT_VERSION_MAJOR}::Core
         Qt${QT_VERSION_MAJOR}::Gui
         Qt${QT_VERSION_MAJOR}::Widgets
