@@ -420,9 +420,21 @@ rather than after each interpolation:
 | `truncation_3x16_reference.bmp` | the image it decodes to |
 
 The third vector exists because the other two do not catch a decoder that
-truncates only at the end. Its blocks have corner values for which the two
-rules disagree, so a decoder that applies the wrong one produces a different
-image there and not on the others.
+truncates only at the end.
+
+The reason is the structure of the first vector. Its three blocks are 4x4,
+12x16 and 4x12 pixels, so every dimension is a multiple of four, and every
+interior ratio is exactly representable as a double. The two rules must
+therefore agree on every pixel of it. The colour vector has smaller blocks,
+but the corner values the encoder chose for them happen to be ones where the
+two rules also agree.
+
+The third vector is built so that they do not. Its blocks have corner values
+for which the two rules differ, so a decoder that applies the wrong one
+produces a different image there and not on the others. Measured against a
+build of the library in which only the interpolation was changed, the first
+two vectors show no difference at all and this one differs in exactly one
+sample of 48 — the pixel the tile was constructed around.
 
 The source of the first two is deterministic: a diagonal gradient
 (`value = x * 8 + y * 4`) with a constant `200` patch in the 4x4 top-left
