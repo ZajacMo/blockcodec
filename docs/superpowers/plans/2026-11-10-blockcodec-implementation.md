@@ -1890,6 +1890,15 @@ cv::Mat Codec::decompress(const std::vector<std::uint8_t>& container,
         block.restore(image);
     }
 
+    // The payload must hold exactly the declared number of blocks. The
+    // block count is a fact about the format, not a hint, so a mismatch
+    // means the file is corrupt.
+    const std::size_t expected_bits = required_bits;
+    if (reader.bit_position() != expected_bits) {
+        throw std::runtime_error(
+            "blockcodec: the payload does not hold the declared number of blocks");
+    }
+
     // The bits after the last block are padding and must be zero. The
     // specification requires this check, so that a corrupted file is
     // rejected rather than silently accepted.
