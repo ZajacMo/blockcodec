@@ -35,6 +35,7 @@ FetchContent_MakeAvailable(googletest)
 # ---------------------------------------------------------------------------
 add_library(blockcodec STATIC
     src/core/bitstream.cpp
+    src/format.cpp
 )
 target_include_directories(blockcodec
     PUBLIC  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -134,5 +135,10 @@ if(BUILD_TESTING)
     add_executable(test_bitstream tests/unit/test_bitstream.cpp)
     target_link_libraries(test_bitstream PRIVATE blockcodec gtest_main)
     add_test(NAME test_bitstream COMMAND test_bitstream
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    add_executable(test_format tests/unit/test_format.cpp)
+    target_link_libraries(test_format PRIVATE blockcodec gtest_main)
+    add_test(NAME test_format COMMAND test_format
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
