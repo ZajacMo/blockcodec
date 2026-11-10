@@ -13,9 +13,20 @@ namespace {
 // The result is truncated to an unsigned char, exactly as the legacy helper
 // did: it returned a uchar, so every intermediate value was rounded down
 // before it was used again. The difference is visible in the golden test.
+//
+// The multiplication must not be contracted into a fused multiply-add. GCC
+// permits that by default and MSVC does not, and a fused operation rounds
+// once instead of twice, which can change the truncated result. The
+// specification records this as a property of the format, and the
+// intermediate values are therefore held in a volatile, which the compiler
+// may not fold into a single instruction.
+//
+// The two properties together make the interpolation give the same answer on
+// every implementation.
 int interpolate(int a, int b, double rate) {
-    return static_cast<int>(
-        static_cast<unsigned char>(a + (b - a) * rate));
+    volatile double product = static_cast<double>(b - a) * rate;
+    volatile double sum = static_cast<double>(a) + product;
+    return static_cast<int>(static_cast<unsigned char>(sum));
 }
 
 // The ratio of `i` within the range [a, b].

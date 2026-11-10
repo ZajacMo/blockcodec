@@ -336,7 +336,40 @@ container is a *measurement* rather than an estimate. The prototype's `BPP()`
 had to estimate, because its colour samples were not part of the stream it
 measured.
 
-### 7.3 Byte and bit order
+### 7.3 Determinism across compilers
+
+The block search compares every pixel against the bilinear interpolation of
+the block's corners, and the result of that comparison decides the block
+boundaries. The interpolation is therefore part of the format, and it has to
+give the same answer on every implementation.
+
+The interpolation is
+
+```
+value = (unsigned char)(a + (b - a) * rate)
+```
+
+evaluated twice, once down the left and the right edge and once across. Two
+properties of this expression make it deterministic:
+
+- The intermediate results are truncated to an unsigned char, so the second
+  interpolation works on integers rather than on the unrounded doubles.
+- The expression is evaluated in the same order everywhere, and the
+  multiplication is not contracted into a fused multiply-add.
+
+That second point needs checking rather than assuming. GCC defaults to
+`-ffp-contract=fast`, which permits fusing `a + (b - a) * rate` into a
+single instruction with a different rounding, and MSVC does not fuse it. The
+difference is invisible in most expressions and would be invisible here
+too, if the truncation did not make it visible.
+
+The check is exhaustive: over all pairs of corner samples in `0..255` and
+all 1/64ths to 64/64ths of the way between them, 140509184 cases, the
+contracted and the uncontracted evaluation agree in every one. Both GCC 13
+and MSVC 19.44 were measured. A conforming implementation must not fuse the
+multiply and the addition, and must truncate at the two points named above.
+
+### 7.4 Byte and bit order
 
 - Every multi-byte integer in the header is **little-endian**.
 - Within the payload, the **most significant bit comes first** in each byte.
@@ -347,7 +380,7 @@ measured.
 These four rules are what an independent implementation needs to reproduce
 the stream exactly.
 
-### 7.4 What a decoder must reject, and what it may tolerate
+### 7.5 What a decoder must reject, and what it may tolerate
 
 Every rule in this specification states one of two things: whether a decoder
 that finds the condition violated **must raise an error**, or whether it
