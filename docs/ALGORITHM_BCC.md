@@ -248,6 +248,57 @@ prohibition, because a language may not be able to express the prohibition:
 3. `total` is `a + product`, again rounded to the nearest double.
 4. The result is `total` truncated towards zero into `0..255`.
 
+Step 2 and step 3 are **two separate roundings**. The product must be
+materialised before the sum is computed, and the compiler must not fuse the
+two into a single instruction. A fused multiply-add computes `a + (b-a) *
+rate` with one rounding instead of two, and that changes the value.
+
+This is a requirement on the intermediate value rather than a prohibition
+on the compiler, because a language may not be able to express the
+prohibition. How it is met depends on the language:
+
+=== "C++"
+
+    // The volatile keeps the compiler from fusing the two operations.
+    // Without it, -ffp-contract=fast or -march=native fuses them.
+    volatile double product = static_cast<double>(b - a) * rate;
+    volatile double sum = static_cast<double>(a) + product;
+    return static_cast<int>(static_cast<unsigned char>(sum));
+
+=== "Python"
+
+    # Python evaluates the two operations separately and rounds each to
+    # the nearest double, so no extra care is needed.
+    def interpolate(a, b, n, d):
+        rate = n / d                   # double, rounded to nearest
+        product = float(b - a) * rate  # double, rounded to nearest
+        total = float(a) + product     # double, rounded to nearest
+        return int(total) & 0xFF       # truncate towards zero
+
+=== "Rust"
+
+    // The intermediate is stored in a variable, which the compiler may
+    // still fold. A black_box or an explicit rounding step keeps it.
+    fn interpolate(a: u8, b: u8, n: u32, d: u32) -> u8 {
+        let rate = (n as f64) / (d as f64);
+        let product = (b as f64 - a as f64) * rate;
+        let total = (a as f64) + product;
+        // The value is always in 0..255, so the truncation is a cast.
+        total as u8
+    }
+
+=== "Java"
+
+    // Strict floating point is required: the x87 extended precision of
+    // the 32 bit x86 ABI keeps intermediates in 80 bit registers, which
+    // rounds differently.
+    public static int interpolate(int a, int b, int n, int d) {
+        final double rate = (double) n / (double) d;
+        final double product = ((double) (b - a)) * rate;
+        final double total = ((double) a) + product;
+        return (int) (byte) total & 0xFF;
+    }
+
 This is **not** exact rational arithmetic. Computing the rate as a rational
 and truncating the exact quotient gives a different answer in many cases,
 because `n/d` is rounded to the nearest double before the multiplication
