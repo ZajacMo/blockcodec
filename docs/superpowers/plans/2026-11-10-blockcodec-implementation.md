@@ -416,7 +416,10 @@ past the width of `int`. This task introduces the replacement.
 
   class BitReader {
   public:
-      explicit BitReader(const std::uint8_t* data, std::size_t size);
+      // `bit_count` is the number of meaningful bits in the buffer. Zero
+      // means "all of them", that is `size * 8`.
+      explicit BitReader(const std::uint8_t* data, std::size_t size,
+                         std::size_t bit_count = 0);
       std::uint64_t read(int bits);
       bool read_bit();
       std::size_t bit_position() const;
@@ -467,7 +470,9 @@ TEST(BitStream, RoundTripsEveryFieldWidth) {
         std::vector<std::uint8_t> bytes;
         w.to_bytes(bytes);
 
-        BitReader r(bytes.data(), bytes.size());
+        // The reader is given the exact bit count, so that the zero padding
+        // of the final byte is not mistaken for unread data.
+        BitReader r(bytes.data(), bytes.size(), w.bit_count());
         EXPECT_EQ(r.read(bits), 0x5A5A5A5A5A5A5A5AULL & mask) << "bits=" << bits;
         EXPECT_EQ(r.read(bits), mask) << "bits=" << bits;
         EXPECT_TRUE(r.exhausted()) << "bits=" << bits;
@@ -483,7 +488,7 @@ TEST(BitStream, RoundTripsAcrossByteBoundaries) {
     std::vector<std::uint8_t> bytes;
     w.to_bytes(bytes);
 
-    BitReader r(bytes.data(), bytes.size());
+    BitReader r(bytes.data(), bytes.size(), w.bit_count());
     for (int i = 0; i < 300; ++i) {
         EXPECT_EQ(r.read(9), static_cast<std::uint64_t>(i)) << "i=" << i;
     }
@@ -499,7 +504,7 @@ TEST(BitStream, WritesTheFullSixtyFourBitRange) {
     w.to_bytes(bytes);
     ASSERT_EQ(bytes.size(), 8u);
 
-    BitReader r(bytes.data(), bytes.size());
+    BitReader r(bytes.data(), bytes.size(), w.bit_count());
     EXPECT_EQ(r.read(64), 0xFFFFFFFFFFFFFFFFULL);
 }
 
@@ -594,14 +599,27 @@ public:
     // The final byte is zero padded.
     void to_bytes(std::vector<std::uint8_t>& out) const;
 
+    // The number of meaningful bits, which is not a multiple of eight when
+    // the writer did not fill the final byte. A reader needs this to tell
+    // the padding from the data.
+    std::size_t bit_count() const { return bits_.size(); }
+
 private:
     std::vector<bool> bits_;
 };
 
 // Reads a sequence of bits written by BitWriter.
+//
+// `bit_count` is the number of meaningful bits in the buffer. Zero means
+// "all of them", that is `size * 8`. A writer that did not fill the final
+// byte passes the exact count, so that the zero padding of that byte is not
+// mistaken for data.
+//
+// A decoder that must verify that the padding is zero wants the default: it
+// needs to read the padding bits, which only the `size * 8` count exposes.
 class BitReader {
 public:
-    BitReader(const std::uint8_t* data, std::size_t size);
+    BitReader(const std::uint8_t* data, std::size_t size, std::size_t bit_count);
 
     // Reads `bits` bits and returns them as an unsigned integer.
     // Throws std::runtime_error if fewer than `bits` bits remain.
@@ -612,13 +630,14 @@ public:
     std::size_t bit_position() const { return position_; }
 
     // The total number of readable bits.
-    std::size_t bit_count() const { return size_ * 8; }
+    std::size_t bit_count() const { return bit_count_; }
 
-    bool exhausted() const { return position_ >= bit_count(); }
+    bool exhausted() const { return position_ >= bit_count_; }
 
 private:
     const std::uint8_t* data_ = nullptr;
     std::size_t size_ = 0;
+    std::size_t bit_count_ = 0;
     std::size_t position_ = 0;
 };
 
@@ -653,16 +672,17 @@ private:
 
 class BitReader {
 public:
-    BitReader(const std::uint8_t* data, std::size_t size);
+    BitReader(const std::uint8_t* data, std::size_t size, std::size_t bit_count);
     std::uint64_t read(int bits);
     bool read_bit();
     std::size_t bit_position() const { return position_; }
-    std::size_t bit_count() const { return size_ * 8; }
-    bool exhausted() const { return position_ >= bit_count(); }
+    std::size_t bit_count() const { return bit_count_; }
+    bool exhausted() const { return position_ >= bit_count_; }
 
 private:
     const std::uint8_t* data_ = nullptr;
     std::size_t size_ = 0;
+    std::size_t bit_count_ = 0;
     std::size_t position_ = 0;
 };
 
@@ -725,8 +745,12 @@ void BitWriter::to_bytes(std::vector<std::uint8_t>& out) const {
     }
 }
 
-BitReader::BitReader(const std::uint8_t* data, std::size_t size)
-    : data_(data), size_(data == nullptr ? 0 : size) {}
+BitReader::BitReader(const std::uint8_t* data, std::size_t size,
+                     std::size_t bit_count)
+    : data_(data),
+      size_(data == nullptr ? 0 : size),
+      bit_count_(bit_count != 0 ? bit_count
+                                : (data == nullptr ? 0 : size * 8)) {}
 
 std::uint64_t BitReader::read(int bits) {
     if (bits < 1 || bits > 64) {
