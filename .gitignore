@@ -57,6 +57,8 @@ compile_commands.json
 
 # Compressed codec output (.bcc)
 *.bcc
+# ...but reference test vectors are versioned on purpose.
+!tests/vectors/*.bcc
 
 # Sample / scratch output
 result.nam

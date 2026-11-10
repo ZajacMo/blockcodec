@@ -1,5 +1,20 @@
 # The `.nam` Block Codec — Format and Algorithm Specification
 
+> **This document specifies the legacy `.nam` container, not the one the
+> library uses today.**
+>
+> The `blockcodec` library reads and writes the `.bcc` container, which is
+> specified in **[docs/ALGORITHM_BCC.md](docs/ALGORITHM_BCC.md)**. This
+> document is kept for two reasons: it is the specification of the format the
+> project started with, and it is the reference for the legacy implementation
+> that the golden regression test uses as its oracle
+> (`tests/legacy/`, driven by `test_golden`).
+>
+> **The library does not read the `.nam` format.** A `.nam` file is rejected
+> with an error rather than guessed at. The two formats are not
+> interchangeable; see [§9 of the `.bcc` specification](docs/ALGORITHM_BCC.md#9-the-legacy-format)
+> for how they differ.
+
 This document specifies the compression codec implemented by
 `Compress_gray`, `Bits`, `Block` and `RBlock`, so that an independent
 implementation in another language can produce byte-identical output and

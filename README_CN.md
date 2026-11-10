@@ -1,53 +1,168 @@
-# 图像处理与压缩工具 (OpenCV Image Processing and Compression Tool)
+# blockcodec
 
 *[English](README.md)*
 
-一个基于 **Qt** 和 **OpenCV** 的 Windows 桌面图像压缩与解压工具。它实现了一套自定义的有损分块压缩算法，
-并且将压缩算法同时封装为一个 **Qt 无关的静态库**，便于在其他项目中复用。
+`blockcodec` 是一个小巧、自包含的 C++17 库，实现了一种 **有损的、基于分块插值的图像编解码器**。
+它把一幅图像编码为一组矩形块，每块由四个角点采样描述，解码时通过双线性插值重建。
+它写出的容器格式 `.bcc` 有着足够精确的规范，独立实现者用另一种语言也能写出逐字节相同的输出。
 
-压缩格式（`.nam`）与算法本身的详细规范见 **[ALGORITHM.md](ALGORITHM.md)**，
-其中还包含一份参考测试向量，独立实现可以用它来验证自己的解码器。
+该库只依赖 OpenCV 提供的图像容器，不依赖其他任何东西。它不依赖 Qt，也不依赖随附的图形界面程序。
 
-> **说明：** 本文档为英文 README 的中文摘要。完整的构建说明、算法说明和已知限制请以
-> [README.md](README.md) 与 [ALGORITHM.md](ALGORITHM.md) 为准。
-
----
-
-## 功能特点
-
-- **主界面导航**：提供清晰的功能入口，可快速切换到不同的操作界面
-- **图像压缩**：支持灰度图像压缩，误差容限（sigma）可调
-- **图像解压**：支持解压此前写出的 `.nam` 文件
-- **实时质量指标**：每次运行后显示压缩比、耗时，以及原图与重建图之间的 PSNR
-- **项目介绍与帮助窗口**
-- **可复用编解码库**：`opencv_codec` 是不依赖 Qt 的静态库
-- **跨平台**：编解码核心可在 Linux、macOS 与 Windows 上构建
+**它不是什么。** `blockcodec` **不是**通用图像编解码器。它不是 JPEG、WebP 或 AVIF 的竞争对手，
+也不打算成为它们的替代品。在自然照片上，它在**相同重建质量下写出的文件比 JPEG 更大**
+——下面的实测数据表明，在每一张 512×512 与 645×1274 的样例图上它都落败，而且差距通常相当可观。
+它的价值在于它是一个 **规范精确、可复现、可测试** 的分块编解码器：完整的格式规范、参考向量、
+与原始实现对拍的黄金回归测试，以及一个与基线（而不是与自己）对比的基准测试。
 
 ---
 
-## 项目结构
+## 目录
+
+- [算法](#算法)
+- [基准测试](#基准测试)
+- [构建](#构建)
+- [安装](#安装)
+- [使用该库](#使用该库)
+- [命令行](#命令行)
+- [彩色支持](#彩色支持)
+- [容器格式](#容器格式)
+- [测试](#测试)
+- [仓库结构](#仓库结构)
+- [限制](#限制)
+- [许可证](#许可证)
+
+---
+
+## 算法
+
+编码器自上而下逐行扫描图像，行内自左向右扫描。在每个尚未被覆盖的像素处，它开始生长一个矩形块：
+先沿对角线，再沿列，最后沿行；一旦候选块通不过块检验就停止。
+一个候选块被接受的条件是：其内部 **每一个** 像素与四角采样的双线性插值之差都不超过 `sigma`。
+写进文件的只有那四个角点采样；内部区域在解码时由插值重建。
+无法被任何块覆盖的像素会作为孤立的单像素块存储。
+
+因此 `sigma` 同时就是画质旋钮和体积旋钮。`sigma` 越小，只接受近乎均匀的块，
+产出的文件大而 PSNR 高；`sigma` 越大，可以接受更粗的块，产出的文件小而 PSNR 低。
+对彩色图像，检验取各通道偏差的 **最大值**，因此单通道图像恰好退化为灰度规则。
+
+位级布局、插值算术，以及解码器必须执行的全部检查，都写在
+**[docs/ALGORITHM_BCC.md](docs/ALGORITHM_BCC.md)** 中。
+
+---
+
+## 基准测试
+
+下面的数字来自 `blockcodec_bench` 在随附的 `images/` 目录上的 **一次实际运行**：
 
 ```
-.
-├── CMakeLists.txt        # CMake 构建：GUI 程序 + 编解码库 + 测试
-├── openCV_test.pro       # Qt Creator 构建（保留）
-├── ALGORITHM.md          # 格式规范与算法参考
-│
-├── Compress_gray.h/.cpp  # 核心编解码：压缩、解压、PSNR
-├── Bits.h/.cpp           # 位流读写
-├── Block.h/.cpp          # 图像块基类
-├── RBlock.h/.cpp         # 可重建块与块有效性模型
-│
-├── mainwindow.*          # 主导航窗口
-├── compresswindow.*      # 压缩窗口
-├── uncompresswindow.*    # 解压窗口
-├── introducewindow.*     # 项目简介窗口
-├── helpwindow.*          # 帮助窗口
-│
-├── tests/                # 自检程序、参考向量与基准测试
-├── images/               # 测试与基准所用的示例图像
-└── Resources/            # 应用图标
+blockcodec_bench --images images --sigmas 1,5,10,20,30,50 --baseline jpeg
 ```
+
+### 有意义的对比方式
+
+把两份互不相干的列表并排放在一起，对读者毫无意义：只有当 JPEG 文件与 blockcodec 文件
+承载 **相同重建结果** 时，二者才可比。因此基准测试会先把 JPEG 质量对齐到 blockcodec 质量。
+对每一个 `sigma`，它找出 **仍能达到 blockcodec 所达 PSNR 的最低 JPEG 质量**，
+并给出该质量下 JPEG 文件的大小。这正是两条曲线相交的地方。
+
+`bc_bytes` 是 `.bcc` 文件在磁盘上的大小，`jpeg_bytes` 是编码后 JPEG 的大小。
+`smaller` 一列给出在同等质量下文件更小的那个编解码器。
+
+**`lena512.bmp` —— 512×512，灰度**
+
+| `sigma` | bc_bytes | bc_psnr | jpeg_q | jpeg_bytes | jpeg_psnr | 更小者 |
+|--------:|---------:|--------:|-------:|-----------:|----------:|--------|
+| 1 | 525 380 | 59.23 dB | 100 | 162 310 | 58.47 dB | *无胜者* |
+| 5 | 269 912 | 42.29 dB | 94 | 81 621 | 42.93 dB | jpeg |
+| 10 | 126 194 | 36.39 dB | 60 | 24 107 | 36.45 dB | jpeg |
+| 20 | 57 803 | 30.38 dB | 10 | 7 998 | 30.41 dB | jpeg |
+| 30 | 35 474 | 26.69 dB | 5 | 5 661 | 27.33 dB | jpeg |
+| 50 | 16 196 | 22.36 dB | 1 | 4 376 | 24.22 dB | jpeg |
+
+**`baboonzyp512.bmp` —— 512×512，高频纹理**
+
+| `sigma` | bc_bytes | bc_psnr | jpeg_q | jpeg_bytes | jpeg_psnr | 更小者 |
+|--------:|---------:|--------:|-------:|-----------:|----------:|--------|
+| 1 | 563 128 | 67.26 dB | 100 | 246 705 | 58.40 dB | *无胜者* |
+| 5 | 507 249 | 46.81 dB | 98 | 201 524 | 49.76 dB | jpeg |
+| 10 | 408 411 | 38.48 dB | 92 | 124 485 | 38.72 dB | jpeg |
+| 20 | 270 822 | 31.26 dB | 75 | 68 913 | 31.34 dB | jpeg |
+| 30 | 191 211 | 27.30 dB | 39 | 39 108 | 27.31 dB | jpeg |
+| 50 | 104 307 | 22.56 dB | 8 | 12 508 | 22.83 dB | jpeg |
+
+**`decho256.bmp` —— 256×256，灰度**
+
+| `sigma` | bc_bytes | bc_psnr | jpeg_q | jpeg_bytes | jpeg_psnr | 更小者 |
+|--------:|---------:|--------:|-------:|-----------:|----------:|--------|
+| 1 | 79 364 | 54.76 dB | 99 | 31 251 | 55.36 dB | jpeg |
+| 5 | 43 676 | 43.06 dB | 89 | 12 755 | 43.19 dB | jpeg |
+| 10 | 29 788 | 37.12 dB | 59 | 6 645 | 37.13 dB | jpeg |
+| 20 | 18 052 | 31.44 dB | 16 | 3 268 | 31.45 dB | jpeg |
+| 30 | 12 228 | 28.54 dB | 9 | 2 416 | 28.93 dB | jpeg |
+| 50 | 6 820 | 24.58 dB | 4 | 1 632 | 25.10 dB | jpeg |
+
+**`lenaColorful.bmp` —— 512×512，三通道**
+
+| `sigma` | bc_bytes | bc_psnr | jpeg_q | jpeg_bytes | jpeg_psnr | 更小者 |
+|--------:|---------:|--------:|-------:|-----------:|----------:|--------|
+| 1 | 1 076 975 | 76.85 dB | 100 | 229 542 | 37.49 dB | *无胜者* |
+| 5 | 923 162 | 46.39 dB | 100 | 229 542 | 37.49 dB | *无胜者* |
+| 10 | 517 081 | 38.29 dB | 100 | 229 542 | 37.49 dB | *无胜者* |
+| 20 | 184 177 | 32.27 dB | 57 | 26 822 | 32.29 dB | jpeg |
+| 30 | 102 287 | 28.61 dB | 14 | 11 389 | 28.76 dB | jpeg |
+| 50 | 46 484 | 24.13 dB | 5 | 7 055 | 24.29 dB | jpeg |
+
+**`PrintScreen.png` —— 645×1274，四通道**
+
+| `sigma` | bc_bytes | bc_psnr | jpeg_q | jpeg_bytes | jpeg_psnr | 更小者 |
+|--------:|---------:|--------:|-------:|-----------:|----------:|--------|
+| 1 | 2 029 003 | 58.09 dB | 100 | 523 861 | 53.03 dB | *无胜者* |
+| 5 | 1 241 516 | 43.72 dB | 95 | 319 351 | 44.22 dB | jpeg |
+| 10 | 762 974 | 38.00 dB | 85 | 187 368 | 38.05 dB | jpeg |
+| 20 | 499 308 | 32.32 dB | 53 | 104 395 | 32.39 dB | jpeg |
+| 30 | 389 394 | 28.46 dB | 22 | 64 965 | 28.62 dB | jpeg |
+| 50 | 282 816 | 23.35 dB | 5 | 31 052 | 23.40 dB | jpeg |
+
+**`100.bmp` —— 16×16，灰度**
+
+| `sigma` | bc_bytes | bc_psnr | jpeg_q | jpeg_bytes | jpeg_psnr | 更小者 |
+|--------:|---------:|--------:|-------:|-----------:|----------:|--------|
+| 1 | 404 | 65.22 dB | 100 | 547 | 59.20 dB | *无胜者* |
+| 5 | 332 | 44.91 dB | 97 | 499 | 46.71 dB | **blockcodec** |
+| 10 | 266 | 37.12 dB | 87 | 414 | 37.24 dB | **blockcodec** |
+| 20 | 194 | 30.02 dB | 23 | 358 | 30.16 dB | **blockcodec** |
+| 30 | 104 | 25.37 dB | 10 | 345 | 25.43 dB | **blockcodec** |
+| 50 | 56 | 21.40 dB | 4 | 338 | 22.44 dB | **blockcodec** |
+
+### 这张表说明了什么
+
+- **在每一张自然图像上、在每一个对齐质量上，JPEG 的文件都更小。**
+  差距很大 —— 在上面的自然图像样例中，blockcodec 的文件是同等质量下 JPEG 文件的
+  1.7× 到 9.1×，通常在 3× 到 7× 之间。一个块需要四个角点采样来描述，代价高昂；
+  而 JPEG 的变换、量化和熵编码在照片上确实是用同样比特数的更优方式。
+- **在 16×16 样例上，blockcodec 胜出。** 原因并不是它压缩得更好，
+  而是它的容器有一个固定的 20 字节头部，而同一张图的 JPEG 光是头部和表格就要 338–547 字节。
+  在 `sigma = 50` 时 blockcodec 写出 56 字节，JPEG 是 338 字节。
+  这是头部体积带来的效应，而不是压缩率上的优势，并且随着图像尺寸达到人们真正会保存的尺度就消失了。
+- **标注 `*无胜者*` 的行不是平局。** 这些行意味着即便最高的 JPEG 质量也达不到 blockcodec 的 PSNR，
+  于是两个文件并不处在同一质量上，它们的大小也就无法说明取舍。
+  基准测试把这类行打印为 `short`，并且不为它们指定胜者。
+  最明显的例子是 `lenaColorful.bmp` 在 `sigma = 1` 时：blockcodec 达到 76.85 dB，
+  而质量 100 的 JPEG 只有 37.49 dB —— 因为三通道双线性块模型几乎能精确复现平坦色块，
+  而 JPEG 的 8×8 DCT 块做不到。
+- **合适的 `sigma` 取决于图像内容。** 平滑的 `lena512` 用 126 kB 达到 36.4 dB，
+  而纹理复杂的 `baboonzyp512` 需要 408 kB 才能达到 38.5 dB，
+  因为纹理图像几乎找不到大块的均匀矩形。
+
+### 复现这张表
+
+```bash
+export PATH="/path/to/opencv/build/x64/vc16/bin:$PATH"   # Windows
+./build/Release/blockcodec_bench.exe \
+    --images images --sigmas 1,5,10,20,30,50 --baseline jpeg
+```
+
+加上 `--csv bench.csv` 可以把测量结果写入三个 CSV 文件。
 
 ---
 
@@ -57,12 +172,21 @@
 
 | 依赖 | 版本 | 说明 |
 |------|------|------|
-| Qt | 5.x 或 6.x | 只需 `Core`、`Gui`、`Widgets` 模块 |
-| OpenCV | 4.x | 已针对 4.10.0 验证 |
-| CMake | 3.16 及以上 | 仅 CMake 构建需要 |
-| 编译器 | C++17 | MSVC 2019+、GCC 8+、Clang 8+ |
+| C++ 编译器 | C++17 | MSVC 2019+、GCC 8+、Clang 8+ |
+| CMake | 3.16 及以上 | |
+| OpenCV | 4.x | 已针对 4.10.0 验证。库本身只需 `core` 与 `imgproc`；命令行工具和基准测试还需要 `imgcodecs` |
+| Qt | 5.x 或 6.x | **可选。** 只有 GUI 示例程序需要它 |
 
-### 方式一 —— CMake（推荐）
+GoogleTest 与 CLI11 由 CMake 在配置阶段自动拉取，无需自行安装。
+
+### 只构建库
+
+```bash
+cmake -S . -B build -DBLOCKCODEC_BUILD_GUI=OFF -DBUILD_TESTING=OFF
+cmake --build build --config Release
+```
+
+### 构建全部目标（含 GUI 示例）
 
 ```bash
 cmake -S . -B build \
@@ -80,127 +204,345 @@ cmake -S . -B build -G "Visual Studio 17 2022" -A x64 \
 cmake --build build --config Release
 ```
 
-运行前需把 OpenCV 与 Qt 的 `bin` 目录加入 `PATH`：
+OpenCV 与 Qt 都是动态链接的，运行产物前需把它们的 `bin` 目录加入 `PATH`：
 
 ```
 C:\Program Files\opencv\build\x64\vc16\bin
 C:\Qt\6.6.2\msvc2019_64\bin
 ```
 
-### 方式二 —— Qt Creator（`.pro`）
+### 构建选项
 
-原有的 `openCV_test.pro` 已保留，可直接在 Qt Creator 中打开：
-
-1. **File → Open File or Project**，选择 `openCV_test.pro`
-2. 选择与本机 Qt 和编译器匹配的 Kit，例如 *Desktop Qt 6.6.2 MSVC2019 64-bit*
-3. `.pro` 中默认指向 `C:/Program Files/opencv/build`，若路径不同请修改
-   `INCLUDEPATH`、`DEPENDPATH` 与 `LIBS`
-
-两种构建方式使用同一份源代码，产物一致。
+| 选项 | 默认值 | 含义 |
+|------|--------|------|
+| `BLOCKCODEC_BUILD_GUI` | `ON` | 构建 Qt GUI 示例（`blockcodec_gui`） |
+| `BUILD_TESTING` | `ON` | 构建单元测试并注册到 CTest |
 
 ---
 
-## 使用说明
-
-### 图像压缩
-
-1. 主界面点击 **Compress**
-2. 点击 **Choose image** 选择图像（`*.png`、`*.jpg`、`*.bmp`）
-3. 选择灰度或彩色模式
-4. 用数值框调整**误差容限**（sigma）：数值越小画质越好、文件越大
-5. 点击 **Start processing**，窗口会显示原图大小、压缩比、耗时与压缩后大小
-6. 点击 **Decompress now** 可预览重建效果及其 PSNR
-7. 点击 **Save** 将压缩流保存为 `.nam` 文件
-
-### 图像解压
-
-1. 主界面点击 **Decompress**
-2. 点击 **Choose file** 选择 `.nam` 文件
-3. 点击 **Decompress** 解码，再点击 **Save** 保存结果
-
----
-
-## 压缩算法
-
-编解码器是面向 **8 位灰度图像** 的有损分块编解码器。编码器扫描图像并将其划分为矩形块，
-每个块由四个角点颜色描述，内部区域通过双线性插值重建；无法被任何块覆盖的像素则作为孤立像素原样存储。
-
-参数 `sigma` 表示像素与覆盖它的块之间允许的最大偏差（灰度级），因此它同时决定了画质与文件大小。
-
-在本仓库自带的 512x512 示例上实测（由 `bench_sweep` 产生）：
-
-| sigma | lena512 比特数 | lena512 文件/原始 | lena512 PSNR | baboon 比特数 | baboon 文件/原始 | baboon PSNR |
-|-------|----------------|-------------------|--------------|-------------|------------------|-------------|
-| 1 | 3 282 134 | 12.52x | 59.23 dB | 3 512 520 | 13.40x | 67.26 dB |
-| 5 | 1 699 187 | 6.48x | 42.29 dB | 3 161 627 | 12.06x | 46.81 dB |
-| 10 | 799 631 | 3.05x | 36.39 dB | 2 543 844 | 9.70x | 38.48 dB |
-| 20 | 368 150 | 1.40x | 30.38 dB | 1 689 296 | 6.44x | 31.26 dB |
-| 30 | 226 626 | 0.86x | 26.69 dB | 1 194 116 | 4.56x | 27.30 dB |
-| 50 | 103 842 | 0.40x | 22.36 dB | 652 517 | 2.49x | 22.56 dB |
-
-"文件/原始"是 `.nam` 文件在磁盘上的大小除以原始像素数据的大小，
-因此**小于 1.0 表示文件比原图更小**。PSNR 为原图与重建图之间的信噪比。
-
-三点值得注意：
-
-- **文本容器带来八倍开销。** 比特流是编解码器实际产生的数据，
-  但 `.nam` 每个比特用一个 ASCII 字符存储，因此磁盘上的文件比比特流大八倍。
-- **sigma 很小时文件会大很多。** 在 `sigma = 1` 时，每个块自身的描述开销
-  远高于它所替代的像素，文件大小是原始像素的 12.5 倍。
-  直到 `sigma ≈ 30` 时该格式才比原始图像更小，而且画质已有明显损失。
-- **合适的 sigma 取决于图像内容。** 纹理平滑的 `lena512` 在同等容限下比纹理复杂的
-  `baboonzyp512` 压缩得好得多，因为后者几乎找不到大块的均匀矩形。
-
-> **关于 `getRate()` 的说明。** 该方法沿用自原始实现，返回的是**每像素字节数**，
-> 而非压缩比，且基于比特流长度而非磁盘文件大小。
-> 上表使用的是磁盘上的实际文件大小，这才是用户关心的数字。
-> 详见 [ALGORITHM.md §9.8](ALGORITHM.md#98-getrate-reports-bytes-per-pixel-not-a-compression-ratio)。
-
-位流的精确格式见 **[ALGORITHM.md](ALGORITHM.md)**。
-
----
-
-## 测试与参考向量
+## 安装
 
 ```bash
-./build/Release/codec_selftest.exe
+cmake --install build --config Release --prefix /usr/local
 ```
 
-自检程序包含三类检查：
+安装内容：
 
-1. **往返测试** —— 压缩再解压内置示例图像，校验尺寸、PSNR 下限与压缩比
-2. **参考向量** —— 解码 `tests/vectors/gradient_16x16.nam`，
-   断言结果与 `gradient_16x16_reference.bmp` **逐像素完全一致**；
-   独立实现应以此为基准
-3. **错误处理** —— 断言文件缺失与空图会被正确报错而非崩溃
-
-重新生成参考向量：
-
-```bash
-./build/Release/codec_vector_gen.exe tests/vectors
+```
+<prefix>/include/blockcodec/*.hpp          公共头文件
+<prefix>/lib/blockcodec.lib                 静态库
+<prefix>/lib/cmake/blockcodec/blockcodecConfig.cmake
+<prefix>/lib/cmake/blockcodec/blockcodecConfigVersion.cmake
+<prefix>/lib/cmake/blockcodec/blockcodecTargets.cmake
 ```
 
-复现压缩比/PSNR 表格：
+### 在下游项目中使用已安装的包
+
+```cmake
+find_package(blockcodec REQUIRED)
+
+add_executable(my_app main.cpp)
+target_link_libraries(my_app PRIVATE blockcodec::blockcodec)
+```
+
+`find_package` 会自行引入 OpenCV，因为 `blockcodec` 的公共头文件包含了 `<opencv2/core.hpp>`。
+如果 OpenCV 不在默认搜索路径上，请用 `CMAKE_PREFIX_PATH` 指向它：
 
 ```bash
-./build/Release/bench_sweep.exe images/lena512.bmp
+cmake -S . -B build \
+      -DCMAKE_PREFIX_PATH="/usr/local;/path/to/opencv/build"
+```
+
+### 直接使用源码树
+
+如果不想安装任何东西：
+
+```cmake
+add_subdirectory(path/to/blockcodec)
+target_link_libraries(my_app PRIVATE blockcodec::blockcodec)
 ```
 
 ---
 
-## 已知限制
+## 使用该库
 
-- **仅支持灰度图。** 分块模型假定空间邻接关系，跨颜色通道没有意义。
-  界面虽提供彩色选项，但彩色图会被当作交错采样处理，结果并不具有实际意义。
-- **压缩格式是文本。** `.nam` 文件每个比特用一个 ASCII `'0'`/`'1'` 字符表示，
-  比打包后的二进制流大约大八倍。这样设计是为了便于查看与移植。
-- **没有版本号与校验和。** 文件被截断时会解码出残缺图像而不报错。
-- **小块图像的开销占比很高。** 16x16 样例的压缩结果比原始像素还大，
-  因此该编解码器只在数百像素以上的图像上才有意义，
-  且需要以画质明显下降为代价。
-- **`getRate()` 返回的是每像素字节数**，而非压缩比，
-  且基于比特流长度而非磁盘文件大小。上表使用的是磁盘上的实际文件大小。
-- **`isColorful` 由图像尺寸推断**，并非写入文件。
+公共 API 很小，而且是无状态的：每次调用彼此独立，测量结果由返回值给出，而非保存在对象里。
+
+```cpp
+#include <blockcodec/blockcodec.hpp>
+
+#include <opencv2/imgcodecs.hpp>
+#include <fstream>
+
+// 编码
+cv::Mat source = cv::imread("input.png", cv::IMREAD_UNCHANGED);
+
+blockcodec::Codec codec({/*sigma=*/10});
+blockcodec::CompressResult result;
+std::vector<std::uint8_t> container = codec.compress(source, &result);
+
+std::printf("%zu bytes, %.4f bpp, %.2f dB\n",
+            result.byte_size, result.bpp, result.psnr);
+
+std::ofstream out("output.bcc", std::ios::binary);
+out.write(reinterpret_cast<const char*>(container.data()),
+          static_cast<std::streamsize>(container.size()));
+
+// 解码
+blockcodec::Codec decoder;
+cv::Mat reconstructed = decoder.decompress("output.bcc");
+```
+
+### API 一览
+
+| 符号 | 作用 |
+|------|------|
+| `blockcodec::Codec` | 编码器与解码器。用 `CompressOptions` 构造。 |
+| `Codec::compress(mat, result)` | 编码图像，返回 `.bcc` 容器。空图或非 8 位图会抛出 `std::runtime_error`。 |
+| `Codec::decompress(container, result)` | 解码容器，返回图像。输入不合法时抛出 `std::runtime_error`。 |
+| `Codec::decompress(path, result)` | 同上，但直接从文件读取容器。 |
+| `blockcodec::CompressOptions` | 保存 `sigma`，即块检验的容限。 |
+| `blockcodec::CompressResult` | 测量结果：`bit_size`、`byte_size`、`bpp`、`cr`、`psnr`、`compress_ms`、`decompress_ms`、`block_count`、`blocks`。 |
+| `blockcodec::psnr(a, b)` | 峰值信噪比（dB）。完全相同的两幅图返回无穷大。 |
+| `blockcodec::bpp(bits, rows, cols)` | 比特流的每像素比特数。 |
+| `blockcodec::compression_ratio(...)` | 原始比特数除以编码后比特数。 |
+| `blockcodec::read_container(data, payload)` | 解析容器头并分离出负载。容器不合法时抛出异常。 |
+| `blockcodec::write_container(header, payload)` | 由头部与负载构造容器。 |
+| `blockcodec::ContainerHeader` | 头部字段：`rows`、`cols`、`block_count`、`channels`、`depth_bits`、`colour`。 |
+| `blockcodec::BitWriter` / `BitReader` | 稠密位流。每字节高位在前，每字节存八位。 |
+| `blockcodec::segmentation_overlay(image, blocks)` | 在图像副本上绘制块的边界。 |
+
+关于两个度量，有两点容易搞错：
+
+- `CompressResult::bpp` 与 `CompressResult::cr` 依据的是 **比特流** 而不是容器文件。
+  容器额外包含了 20 字节的头部和最后一个字节的填充位。基准测试会单独报告文件大小，
+  因为那才是用户关心的数字。
+- `CompressResult::psnr` 是与原图相比测得的，因此编码器会把刚写出的内容再解码一次来计算它。
+  这次校验解码的时间已计入 `compress_ms`。
+
+---
+
+## 命令行
+
+`blockcodec` 可执行文件有三个子命令。
+
+```
+blockcodec, a block based image compression codec
+Usage: blockcodec.exe [OPTIONS] SUBCOMMAND
+
+Options:
+  -h,--help                   Print this help message and exit
+
+Subcommands:
+  compress                    Compress an image
+  decompress                  Decompress a container
+  info                        Print the header of a container
+```
+
+### `compress`
+
+```
+$ blockcodec compress images/lena512.bmp -o lena.bcc -s 10
+wrote lena.bcc
+  bits        1009392
+  bytes       126194
+  bpp         3.850525
+  cr          2.077639
+  psnr        36.3887 dB
+  blocks      14844
+  encode      44.81 ms
+```
+
+`-s` 是容限，默认值为 `10`。`-q` 可以抑制这段报告输出。
+
+### `info`
+
+```
+$ blockcodec info lena.bcc
+file          lena.bcc
+  version     1
+  dimensions  512 x 512
+  channels    1
+  depth       8 bits
+  blocks      14844
+  payload     126174 bytes
+```
+
+### `decompress`
+
+```
+$ blockcodec decompress lena.bcc -o lena.png --compare images/lena512.bmp
+wrote lena.png (512x512, 1 channels)
+  blocks      14844
+  decode      3.78 ms
+  psnr        36.3887 dB
+```
+
+`--compare` 是可选的；它会给出与参考图之间的 PSNR，并在形状不匹配时报错。
+
+---
+
+## 彩色支持
+
+**这个项目的旧版本声称支持彩色，实际上并没有做到。** 旧格式从图像宽度推断通道数，
+于是每一张宽大于高的图像都被误判，图形界面里的彩色选项产生的结果也没有实际意义。
+
+当前的库是真正支持彩色的：
+
+- 通道数 **显式** 存放在容器头中，因此解码出的图像通道数是正确的。
+- 灰度（1 通道）、常见彩色布局（3 通道）以及带 alpha 通道的图像（4 通道）都能正确往返。
+- 块检验比较各通道偏差的 **最大值**，因此单通道恰好退化为灰度规则，
+  编解码器不会接受某个通道很好而另一个通道很差的块。
+
+```
+$ blockcodec compress images/lenaColorful.bmp -o color.bcc -s 20
+wrote color.bcc
+  bits        1473252
+  bytes       184177
+  bpp         5.620010
+  cr          4.270455
+  psnr        32.2666 dB
+  blocks      11161
+  encode      104.27 ms
+
+$ blockcodec info color.bcc
+file          color.bcc
+  version     1
+  dimensions  512 x 512
+  channels    3
+  depth       8 bits
+  blocks      11161
+  payload     184157 bytes
+```
+
+四通道图像同样能正确往返：
+
+```
+$ blockcodec info ps.bcc
+file          ps.bcc
+  version     1
+  dimensions  645 x 1274
+  channels    4
+  depth       8 bits
+  blocks      28736
+  payload     614232 bytes
+```
+
+只支持 8 位图像。头部虽然预留了 `depth_bits` 字段，但 16 位和 32 位采样是保留值，会被拒绝。
+
+---
+
+## 容器格式
+
+一个 `.bcc` 容器由固定的 20 字节头部和一个打包后的负载组成：
+
+```
+offset  size  field
+0       4     magic        "BCC\0"
+4       1     version      0x01
+5       1     flags        bit 0: colour (multi-channel)
+6       4     rows         uint32, little-endian
+10      4     cols         uint32, little-endian
+14      1     channels     uint8
+15      1     depth_bits   uint8
+16      4     block_count  uint32, little-endian
+20      n     payload      the packed bitstream
+```
+
+负载中的每个块依次写出其左上角位置、宽度减一、高度减一，以及角点采样 ——
+每通道四个，顺序为左上、右上、左下、右下。
+字段宽度由头部推导而来，而不是依赖写入方的当前位置，
+因此负载是自定界的，解码器永远不会读到填充位。
+
+完整规范（包括插值算术、字节与位序，以及解码器必须拒绝的全部情形）见
+**[docs/ALGORITHM_BCC.md](docs/ALGORITHM_BCC.md)**。
+
+这个项目此前使用过 `.nam` 格式，它的规范单独写在 **[ALGORITHM.md](ALGORITHM.md)** 中，
+描述的是 **旧版** 格式。**本库不读取旧版格式**；遇到 `.nam` 文件会直接报错，
+而不是去猜测它。两个格式不可互换；两者的差异见
+[`.bcc` 规范第 9 节](docs/ALGORITHM_BCC.md#9-the-legacy-format)。
+
+---
+
+## 测试
+
+```bash
+ctest --test-dir build --output-on-failure              # Linux / macOS
+ctest --test-dir build -C Release --output-on-failure    # Windows
+```
+
+| 测试 | 覆盖内容 |
+|------|----------|
+| `codec_selftest` | 旧版自检：往返测试、参考向量、错误处理 |
+| `test_bitstream` | 稠密位流的写入与读取 |
+| `test_format` | 容器头：写入、解析，以及全部拒绝规则 |
+| `test_vector` | 参考向量解码结果与参考图像完全一致 |
+| `test_cli` | 驱动 `blockcodec` 可执行文件 |
+| `test_codec` | 编解码器：往返测试、彩色、块模型 |
+| `test_metrics` | `psnr`、`bpp` 与压缩比 |
+| `test_bench` | 驱动 `blockcodec_bench` |
+| `test_robustness` | 非法输入被拒绝而不是被信任 |
+| `test_golden` | 以旧版实现为基准，与新编解码器对拍 |
+
+`tests/vectors/` 中的参考向量是独立实现的验收标准：
+解码 `gradient_16x16.bcc` 的结果必须与 `gradient_16x16_reference.bmp`
+**逐像素完全一致**。彩色的一对 `gradient_16x16_colour.bcc` 同理。
+度量指标不是验收标准 —— 验证工具与被验证的实现可能用同样的方式计算它们，
+于是在双方都错的情况下也彼此一致。
+
+---
+
+## 仓库结构
+
+```
+.
+├── CMakeLists.txt          构建脚本
+├── cmake/
+│   └── blockcodecConfig.cmake.in   安装后的包描述文件
+├── include/blockcodec/      公共头文件
+│   ├── blockcodec.hpp       总头文件
+│   ├── bitstream.hpp        稠密位流
+│   ├── codec.hpp            编码器与解码器
+│   ├── format.hpp           .bcc 容器
+│   ├── metrics.hpp          psnr、bpp、压缩比
+│   └── segment.hpp          分块叠加显示
+├── src/
+│   ├── core/                位流、块模型、编解码器
+│   ├── format.cpp           容器
+│   └── segment.cpp          叠加显示
+├── apps/
+│   ├── cli/                 blockcodec 可执行文件
+│   ├── qt/                  GUI 示例（blockcodec_gui）
+│   └── prototype/           原始原型，保留供参考
+├── bench/                   blockcodec_bench 及其 JPEG 基线
+├── tests/
+│   ├── unit/ cli/ bench/    各测试套件
+│   ├── vector/              参考向量生成器
+│   ├── vectors/             版本化的参考向量
+│   └── legacy/              旧版实现，作为对拍基准
+├── legacy/vs-console/       之前的 Visual Studio 实现
+├── docs/
+│   └── ALGORITHM_BCC.md     .bcc 格式规范
+├── ALGORITHM.md             旧版 .nam 格式规范
+├── images/                  示例图像
+└── CHANGELOG.md             变更历史
+```
+
+---
+
+## 限制
+
+- **在自然图像上输给 JPEG。** 这是最主要的一条，而且是实测出来的而非假设的。
+  参见[基准测试](#基准测试)。
+- **只支持 8 位图像。** 头部为 16 位和 32 位每采样预留了字段，但解码器会拒绝它们。
+- **编码器不快。** 它是一个直接了当的搜索，不是最优划分。
+  一张 512×512 图像要几十毫秒，一张 645×1274 的截图要一秒多。它没有并行化。
+- **块搜索是贪心的，且依赖顺序。** 扫描顺序决定了块的形状，进而决定了文件大小。
+  换一个顺序会得到另一个同样合法的流。
+- **容器没有校验和。** 被破坏的文件会被头部检查和填充位检查发现，
+  但那些仍能被解码的负载损坏则检测不出来。
+- **各项指标并不构成对编解码器的认证。** 正如格式规范所说，
+  每像素比特数与压缩比是测量值，而不是验收标准。
 
 ---
 
