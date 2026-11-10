@@ -2205,7 +2205,7 @@ TEST(Golden, MatchesTheLegacyReconstructionForGreyscaleImages) {
 }
 ```
 
-- [ ] **Step 3: Register the oracle and the test**
+- [ ] **Step 3: Register the test**
 
 The `legacy_codec` library was created in Task 5 and already builds the
 copies under `tests/legacy/`. It is **not** created again here; a second
@@ -2228,10 +2228,11 @@ Add inside `if(BUILD_TESTING)`:
     endif()
 ```
 
-- [ ] **Step 4: Make the legacy block list accessible**
+- [ ] **Step 4: Check that the legacy block list is accessible**
 
-In `tests/legacy/Compress_gray.h`, the `allBlocks` member is private. Add a
-public accessor to the legacy header:
+The `allBlocks` member of the legacy class is private, and the test needs to
+compare the block counts. The public accessor was added to
+`tests/legacy/Compress_gray.h` when the file was copied:
 
 ```cpp
     // The blocks found by the last encode. Exposed so the golden test can
@@ -2239,8 +2240,7 @@ public accessor to the legacy header:
     const std::vector<RBlock>& blocks() const { return allBlocks; }
 ```
 
-The test already calls `legacy.blocks().size()`, so it cannot compile until
-this accessor exists.
+Confirm it is there, and add it if it is not.
 
 - [ ] **Step 5: Run the test and confirm it passes**
 
