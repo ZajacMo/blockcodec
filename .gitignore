@@ -77,3 +77,12 @@ $RECYCLE.BIN/
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# CLion's default build directory name
+cmake-build-debug/
+cmake-build-*/
+# Preset build trees
+build/*/
+# Probe and scratch binaries
+*.exe
+!tools/*.exe

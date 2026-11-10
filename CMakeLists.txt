@@ -89,7 +89,11 @@ if(BUILD_TESTING)
     target_compile_definitions(codec_selftest PRIVATE
         OPENCV_CODEC_TEST_VECTOR_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/vectors")
 
-    add_test(NAME codec_selftest COMMAND codec_selftest)
+    # The self-test loads its sample images through relative paths, so it has
+    # to run with the source directory as the working directory. Ctest would
+    # otherwise use the build directory and the samples would be skipped.
+    add_test(NAME codec_selftest COMMAND codec_selftest
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
     # Regenerates the reference vectors. Not part of the test run itself,
     # because the vectors are versioned and must stay stable.
