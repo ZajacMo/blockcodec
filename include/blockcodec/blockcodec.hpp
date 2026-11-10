@@ -6,3 +6,4 @@
 #include "blockcodec/codec.hpp"
 #include "blockcodec/format.hpp"
 #include "blockcodec/metrics.hpp"
+#include "blockcodec/segment.hpp"

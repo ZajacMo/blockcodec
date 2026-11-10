@@ -147,6 +147,14 @@ std::vector<std::uint8_t> Codec::compress(const cv::Mat& source,
 
     std::vector<std::uint8_t> container = write_container(header, payload);
 
+    blocks_.clear();
+    blocks_.reserve(blocks.size());
+    for (const RBlock& block : blocks) {
+        blocks_.emplace_back(block.lt().x, block.lt().y,
+                             block.rb().x - block.lt().x + 1,
+                             block.rb().y - block.lt().y + 1);
+    }
+
     if (result != nullptr) {
         result->bit_size = writer.bit_count();
         result->byte_size = container.size();
@@ -229,10 +237,13 @@ cv::Mat Codec::decompress(const std::vector<std::uint8_t>& container,
             "blockcodec: the payload does not hold the declared number of blocks");
     }
 
-    // The bits after the last block are padding and must be zero. The
-    // specification requires this check, so that a corrupted file is
-    // rejected rather than silently accepted.
-    while (!reader.exhausted()) {
+    // The bits between the last block and the end of its byte are padding
+    // and must be zero. The specification requires this check, so that a
+    // corrupted file is rejected rather than silently accepted.
+    //
+    // Only the padding of the last byte is checked. Trailing bytes after
+    // the payload are tolerated, as the specification says they may be.
+    while (reader.bit_position() < required_bits + (8 - required_bits % 8) % 8) {
         if (reader.read_bit()) {
             throw std::runtime_error(
                 "blockcodec: the padding bits after the last block are not zero");

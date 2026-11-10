@@ -50,10 +50,15 @@ public:
 
     cv::Mat decompress(const std::string& path, CompressResult* result = nullptr);
 
+    // The extents of the blocks of the last operation, in image
+    // coordinates. The list is empty until an operation has run.
+    const std::vector<cv::Rect>& blocks() const { return blocks_; }
+
     const CompressOptions& options() const { return options_; }
 
 private:
     CompressOptions options_;
+    std::vector<cv::Rect> blocks_;
 };
 
 // The peak signal-to-noise ratio between two images, in decibels.

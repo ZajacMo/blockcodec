@@ -1,5 +1,6 @@
 #include "blockcodec/codec.hpp"
 #include "blockcodec/format.hpp"
+#include "blockcodec/segment.hpp"
 
 #include <gtest/gtest.h>
 
@@ -155,4 +156,43 @@ TEST(Codec, ReportsBitsPerPixelConsistently) {
     // The container is a 20 byte header plus the packed payload, whose
     // length is the bit count rounded up to a byte.
     EXPECT_LE(result.byte_size, result.bit_size / 8 + 20);
+}
+
+TEST(Codec, ReportsTheBlockExtents) {
+    const cv::Mat source = make_gradient(64, 64, 1);
+
+    Codec codec;
+    codec.compress(source);
+
+    const std::vector<cv::Rect>& blocks = codec.blocks();
+    ASSERT_FALSE(blocks.empty());
+
+    // Every block lies inside the image and has a positive extent.
+    for (const cv::Rect& block : blocks) {
+        EXPECT_GE(block.x, 0);
+        EXPECT_GE(block.y, 0);
+        EXPECT_LE(block.x + block.width, source.cols);
+        EXPECT_LE(block.y + block.height, source.rows);
+        EXPECT_GT(block.width, 0);
+        EXPECT_GT(block.height, 0);
+    }
+}
+
+TEST(Segment, DrawsTheOverlayOnACopy) {
+    const cv::Mat source = make_gradient(64, 64, 1);
+
+    Codec codec;
+    codec.compress(source);
+
+    const cv::Mat overlay = blockcodec::segmentation_overlay(source, codec.blocks());
+
+    // The overlay is a colour image even when the source is greyscale, and
+    // the source is left untouched.
+    EXPECT_EQ(overlay.rows, source.rows);
+    EXPECT_EQ(overlay.cols, source.cols);
+    EXPECT_EQ(overlay.channels(), 3);
+
+    const cv::Mat untouched = source.clone();
+    codec.compress(source);
+    EXPECT_EQ(cv::countNonZero(source != untouched), 0);
 }

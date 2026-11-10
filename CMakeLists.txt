@@ -40,6 +40,7 @@ add_library(blockcodec STATIC
     src/core/codec.cpp
     src/core/metrics.cpp
     src/format.cpp
+    src/segment.cpp
 )
 target_include_directories(blockcodec
     PUBLIC  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
