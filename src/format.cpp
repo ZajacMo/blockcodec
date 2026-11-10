@@ -26,10 +26,42 @@ std::uint32_t read_u32(const std::uint8_t* p) {
            (static_cast<std::uint32_t>(p[3]) << 24);
 }
 
+// Checks the conditions that both the writer and the reader must enforce.
+//
+// The specification classifies every one of these as required: a decoder
+// that accepts a container with an empty image, an unsupported channel
+// count or an implausible size is not conforming.
+void validate_header(const ContainerHeader& header) {
+    if (header.rows == 0 || header.cols == 0) {
+        throw std::runtime_error("blockcodec: the container declares an empty image");
+    }
+    if (header.channels < 1 || header.channels > 4) {
+        throw std::runtime_error(
+            "blockcodec: the container declares an unsupported channel count");
+    }
+    if (header.depth_bits != 8 && header.depth_bits != 16 &&
+        header.depth_bits != 32) {
+        throw std::runtime_error(
+            "blockcodec: the container declares an unsupported colour depth");
+    }
+
+    const std::uint64_t pixels = static_cast<std::uint64_t>(header.rows) *
+                                 static_cast<std::uint64_t>(header.cols);
+    if (pixels > kMaxPixels) {
+        throw std::runtime_error(
+            "blockcodec: the container declares an implausible image size");
+    }
+}
+
 }  // namespace
 
 std::vector<std::uint8_t> write_container(const ContainerHeader& header,
                                            const std::vector<std::uint8_t>& payload) {
+    // A writer must never produce a container that the reader would reject,
+    // so the same conditions are checked here. See the specification, which
+    // classifies every decoder check as required or tolerated.
+    validate_header(header);
+
     std::vector<std::uint8_t> out;
     out.reserve(kHeaderSize + payload.size());
 
@@ -68,21 +100,7 @@ ContainerHeader read_container(const std::vector<std::uint8_t>& data,
     header.depth_bits = data[15];
     header.block_count = read_u32(data.data() + 16);
 
-    if (header.rows == 0 || header.cols == 0) {
-        throw std::runtime_error("blockcodec: the container declares an empty image");
-    }
-    if (header.channels < 1 || header.channels > 4) {
-        throw std::runtime_error("blockcodec: the container declares an unsupported channel count");
-    }
-    if (header.depth_bits != 8 && header.depth_bits != 16 && header.depth_bits != 32) {
-        throw std::runtime_error("blockcodec: the container declares an unsupported colour depth");
-    }
-
-    const std::uint64_t pixels =
-        static_cast<std::uint64_t>(header.rows) * static_cast<std::uint64_t>(header.cols);
-    if (pixels > kMaxPixels) {
-        throw std::runtime_error("blockcodec: the container declares an implausible image size");
-    }
+    validate_header(header);
 
     payload.assign(data.begin() + static_cast<std::ptrdiff_t>(kHeaderSize), data.end());
     return header;

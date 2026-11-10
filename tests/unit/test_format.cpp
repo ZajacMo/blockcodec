@@ -60,22 +60,62 @@ TEST(Format, RejectsAnUnknownVersion) {
     EXPECT_THROW(read_container(container, payload), std::runtime_error);
 }
 
+namespace {
+
+// Builds a container byte by byte, so that a malformed header can be
+// produced. The writer refuses to emit one, and a malformed container
+// reaches the reader from outside anyway.
+std::vector<std::uint8_t> make_raw_container(std::uint32_t rows,
+                                              std::uint32_t cols,
+                                              std::uint8_t channels,
+                                              std::uint8_t depth_bits) {
+    std::vector<std::uint8_t> out{'B', 'C', 'C', 0};
+    out.push_back(1);              // version
+    out.push_back(0);              // flags
+    out.push_back(static_cast<std::uint8_t>(rows & 0xFFu));
+    out.push_back(static_cast<std::uint8_t>((rows >> 8) & 0xFFu));
+    out.push_back(static_cast<std::uint8_t>((rows >> 16) & 0xFFu));
+    out.push_back(static_cast<std::uint8_t>((rows >> 24) & 0xFFu));
+    out.push_back(static_cast<std::uint8_t>(cols & 0xFFu));
+    out.push_back(static_cast<std::uint8_t>((cols >> 8) & 0xFFu));
+    out.push_back(static_cast<std::uint8_t>((cols >> 16) & 0xFFu));
+    out.push_back(static_cast<std::uint8_t>((cols >> 24) & 0xFFu));
+    out.push_back(channels);
+    out.push_back(depth_bits);
+    out.push_back(0);              // block count
+    out.push_back(0);
+    out.push_back(0);
+    out.push_back(0);
+    out.push_back(0);              // payload
+    return out;
+}
+
+}  // namespace
+
 TEST(Format, RejectsImplausibleDimensions) {
-    ContainerHeader header;
-    header.rows = 100000;
-    header.cols = 100000;
-    std::vector<std::uint8_t> container = write_container(header, {0x00});
+    const std::vector<std::uint8_t> container =
+        make_raw_container(100000, 100000, 1, 8);
 
     std::vector<std::uint8_t> payload;
     EXPECT_THROW(read_container(container, payload), std::runtime_error);
 }
 
 TEST(Format, RejectsAnUnsupportedChannelCount) {
-    ContainerHeader header;
-    header.rows = 4;
-    header.cols = 4;
-    header.channels = 7;
-    std::vector<std::uint8_t> container = write_container(header, {0x00});
+    const std::vector<std::uint8_t> container = make_raw_container(4, 4, 7, 8);
+
+    std::vector<std::uint8_t> payload;
+    EXPECT_THROW(read_container(container, payload), std::runtime_error);
+}
+
+TEST(Format, RejectsAnEmptyImage) {
+    const std::vector<std::uint8_t> container = make_raw_container(0, 4, 1, 8);
+
+    std::vector<std::uint8_t> payload;
+    EXPECT_THROW(read_container(container, payload), std::runtime_error);
+}
+
+TEST(Format, RejectsAnUnsupportedDepth) {
+    const std::vector<std::uint8_t> container = make_raw_container(4, 4, 1, 7);
 
     std::vector<std::uint8_t> payload;
     EXPECT_THROW(read_container(container, payload), std::runtime_error);
@@ -92,4 +132,36 @@ TEST(Format, RejectsATruncatedContainer) {
                                                           container.begin() + 8),
                                  payload),
                  std::runtime_error);
+}
+
+TEST(Format, RejectsAnInvalidHeaderOnWrite) {
+    // A writer must never produce a container that the reader would reject.
+    ContainerHeader header;
+    header.rows = 0;
+    header.cols = 4;
+    EXPECT_THROW(write_container(header, {0x00}), std::runtime_error);
+
+    header.rows = 4;
+    header.cols = 4;
+    header.channels = 7;
+    EXPECT_THROW(write_container(header, {0x00}), std::runtime_error);
+
+    header.channels = 1;
+    header.depth_bits = 7;
+    EXPECT_THROW(write_container(header, {0x00}), std::runtime_error);
+
+    header.depth_bits = 8;
+    header.rows = 100000;
+    header.cols = 100000;
+    EXPECT_THROW(write_container(header, {0x00}), std::runtime_error);
+}
+
+TEST(Format, AcceptsTheDepthsItSupports) {
+    for (const std::uint8_t depth : {8, 16, 32}) {
+        ContainerHeader header;
+        header.rows = 4;
+        header.cols = 4;
+        header.depth_bits = depth;
+        EXPECT_NO_THROW(write_container(header, {0x00})) << "depth=" << depth;
+    }
 }
