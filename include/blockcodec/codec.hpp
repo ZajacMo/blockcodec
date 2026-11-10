@@ -28,6 +28,11 @@ struct CompressResult {
     double      compress_ms = 0.0;
     double      decompress_ms = 0.0;
     std::size_t block_count = 0;
+
+    // The extents of the blocks, in image coordinates. They are filled in
+    // by both the encoder and the decoder, so an overlay can be built from
+    // a container that was decoded by a different codec instance.
+    std::vector<cv::Rect> blocks;
 };
 
 // Encodes and decodes images with a block based codec.
@@ -50,20 +55,10 @@ public:
 
     cv::Mat decompress(const std::string& path, CompressResult* result = nullptr);
 
-    // The extents of the blocks of the last operation, in image
-    // coordinates. The list is empty until an operation has run, and it is
-    // empty again after one that failed.
-    //
-    // Both compress() and decompress() fill it in, so the segmentation
-    // overlay can be built from a container that the codec did not
-    // compress itself.
-    const std::vector<cv::Rect>& blocks() const { return blocks_; }
-
     const CompressOptions& options() const { return options_; }
 
 private:
     CompressOptions options_;
-    std::vector<cv::Rect> blocks_;
 };
 
 // The peak signal-to-noise ratio between two images, in decibels.

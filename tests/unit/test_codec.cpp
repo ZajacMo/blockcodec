@@ -162,9 +162,10 @@ TEST(Codec, ReportsTheBlockExtents) {
     const cv::Mat source = make_gradient(64, 64, 1);
 
     Codec codec;
-    codec.compress(source);
+    CompressResult result;
+    codec.compress(source, &result);
 
-    const std::vector<cv::Rect>& blocks = codec.blocks();
+    const std::vector<cv::Rect>& blocks = result.blocks;
     ASSERT_FALSE(blocks.empty());
 
     // Every block lies inside the image and has a positive extent.
@@ -182,9 +183,10 @@ TEST(Segment, DrawsTheOverlayOnACopy) {
     const cv::Mat source = make_gradient(64, 64, 1);
 
     Codec codec;
-    codec.compress(source);
+    CompressResult result;
+    codec.compress(source, &result);
 
-    const cv::Mat overlay = blockcodec::segmentation_overlay(source, codec.blocks());
+    const cv::Mat overlay = blockcodec::segmentation_overlay(source, result.blocks);
 
     // The overlay is a colour image even when the source is greyscale, and
     // the source is left untouched.
@@ -203,35 +205,35 @@ TEST(Codec, ReportsTheBlockExtentsOfADecodedContainer) {
     const cv::Mat source = make_gradient(64, 64, 1);
 
     Codec encoder;
-    const std::vector<std::uint8_t> container = encoder.compress(source);
+    CompressResult encoder_result;
+    const std::vector<std::uint8_t> container = encoder.compress(source, &encoder_result);
 
     Codec decoder;
-    decoder.decompress(container);
+    CompressResult decoder_result;
+    decoder.decompress(container, &decoder_result);
 
-    ASSERT_EQ(decoder.blocks().size(), encoder.blocks().size());
-    for (std::size_t i = 0; i < decoder.blocks().size(); ++i) {
-        EXPECT_EQ(decoder.blocks()[i].x, encoder.blocks()[i].x);
-        EXPECT_EQ(decoder.blocks()[i].y, encoder.blocks()[i].y);
-        EXPECT_EQ(decoder.blocks()[i].width, encoder.blocks()[i].width);
-        EXPECT_EQ(decoder.blocks()[i].height, encoder.blocks()[i].height);
+    ASSERT_EQ(decoder_result.blocks.size(), encoder_result.blocks.size());
+    for (std::size_t i = 0; i < decoder_result.blocks.size(); ++i) {
+        EXPECT_EQ(decoder_result.blocks[i].x, encoder_result.blocks[i].x);
+        EXPECT_EQ(decoder_result.blocks[i].y, encoder_result.blocks[i].y);
+        EXPECT_EQ(decoder_result.blocks[i].width, encoder_result.blocks[i].width);
+        EXPECT_EQ(decoder_result.blocks[i].height, encoder_result.blocks[i].height);
     }
 }
 
-TEST(Codec, ClearsTheBlockExtentsAfterAFailedOperation) {
-    // A rejected image must not leave the extents of an earlier operation
-    // behind, because they would describe a picture that is not the one the
-    // caller last asked about.
+TEST(Codec, ReportsNoExtentsForAFailedOperation) {
+    // A rejected operation must not report the extents of an earlier one,
+    // because they would describe a picture that is not the one the caller
+    // last asked about. The result of a failed call is left empty.
     Codec codec;
-    codec.compress(make_gradient(64, 64, 1));
-    ASSERT_FALSE(codec.blocks().empty());
 
-    EXPECT_THROW(codec.compress(cv::Mat()), std::runtime_error);
-    EXPECT_TRUE(codec.blocks().empty());
+    CompressResult failed_compress;
+    EXPECT_THROW(codec.compress(cv::Mat(), &failed_compress), std::runtime_error);
+    EXPECT_TRUE(failed_compress.blocks.empty());
 
-    codec.compress(make_gradient(64, 64, 1));
-    ASSERT_FALSE(codec.blocks().empty());
-
-    EXPECT_THROW(codec.decompress(std::vector<std::uint8_t>{1, 2, 3, 4, 5}),
+    CompressResult failed_decompress;
+    EXPECT_THROW(codec.decompress(std::vector<std::uint8_t>{1, 2, 3, 4, 5},
+                                  &failed_decompress),
                  std::runtime_error);
-    EXPECT_TRUE(codec.blocks().empty());
+    EXPECT_TRUE(failed_decompress.blocks.empty());
 }
