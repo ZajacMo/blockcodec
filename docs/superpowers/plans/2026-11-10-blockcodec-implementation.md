@@ -536,7 +536,8 @@ Then, inside the existing `if(BUILD_TESTING)` block, add:
 ```cmake
     add_executable(test_bitstream tests/unit/test_bitstream.cpp)
     target_link_libraries(test_bitstream PRIVATE blockcodec gtest_main)
-    add_test(NAME test_bitstream COMMAND test_bitstream)
+    add_test(NAME test_bitstream COMMAND test_bitstream
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 ```
 
 Run: `cmd.exe //c "F:\\Projects\\01_courses\\cpp\\QtProject\\openCV_test\\tools\\build.bat"`
@@ -898,7 +899,8 @@ Add to `CMakeLists.txt` inside `if(BUILD_TESTING)`:
 ```cmake
     add_executable(test_format tests/unit/test_format.cpp)
     target_link_libraries(test_format PRIVATE blockcodec gtest_main)
-    add_test(NAME test_format COMMAND test_format)
+    add_test(NAME test_format COMMAND test_format
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 ```
 
 Run the build. Expected: failure, `blockcodec/format.hpp` does not exist.
@@ -1248,7 +1250,8 @@ Add to `CMakeLists.txt` inside `if(BUILD_TESTING)`:
 ```cmake
     add_executable(test_codec tests/unit/test_codec.cpp)
     target_link_libraries(test_codec PRIVATE blockcodec gtest_main)
-    add_test(NAME test_codec COMMAND test_codec)
+    add_test(NAME test_codec COMMAND test_codec
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 ```
 
 Run the build. Expected: failure, `blockcodec/codec.hpp` does not exist.
@@ -2131,7 +2134,8 @@ Add inside `if(BUILD_TESTING)`:
         target_link_libraries(test_golden PRIVATE blockcodec legacy_codec gtest_main)
         target_compile_definitions(test_golden PRIVATE
             BLOCKCODEC_IMAGE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/images")
-        add_test(NAME test_golden COMMAND test_golden)
+        add_test(NAME test_golden COMMAND test_golden
+                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     endif()
 ```
 
@@ -2300,11 +2304,13 @@ Add to `CMakeLists.txt` inside `if(BUILD_TESTING)`:
 ```cmake
     add_executable(test_metrics tests/unit/test_metrics.cpp)
     target_link_libraries(test_metrics PRIVATE blockcodec gtest_main)
-    add_test(NAME test_metrics COMMAND test_metrics)
+    add_test(NAME test_metrics COMMAND test_metrics
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
     add_executable(test_robustness tests/unit/test_robustness.cpp)
     target_link_libraries(test_robustness PRIVATE blockcodec gtest_main)
-    add_test(NAME test_robustness COMMAND test_robustness)
+    add_test(NAME test_robustness COMMAND test_robustness
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 ```
 
 Run the build. Expected: failure, `blockcodec/metrics.hpp` does not exist.
@@ -3560,6 +3566,23 @@ against the legacy implementation and must be preserved exactly:
 on a three channel matrix; on a greyscale matrix it reads past the element.
 The plan therefore reads and writes samples through `src/core/pixel.hpp`,
 which uses the row pointer and works for any channel count.
+
+**Every test that reads a file needs a working directory.** Ctest runs a test
+with the *build* directory as the working directory, so a test that loads
+`images/lena512.bmp` by a relative path silently skips it. The exit code
+stays 0 and the test still reports "Passed", so the failure is invisible
+unless the check count is inspected. The existing `codec_selftest` had this
+problem: it reported 5 checks instead of 16 for exactly this reason.
+
+Every `add_test` in this plan therefore sets the working directory:
+
+```cmake
+add_test(NAME test_xxx COMMAND test_xxx
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+```
+
+And every task's expected test output names the check count, not just the
+exit code, so a silently skipped check shows up as a mismatch.
 
 **A note on the landscape greyscale test.** The assertion targets the
 channel count carried by the container, not the decoded matrix. The legacy
