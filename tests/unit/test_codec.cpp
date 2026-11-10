@@ -221,6 +221,23 @@ TEST(Codec, ReportsTheBlockExtentsOfADecodedContainer) {
     }
 }
 
+TEST(Codec, ReplacesTheExtentsWhenTheResultIsReused) {
+    // The result belongs to the caller, so it may still hold the extents of
+    // an earlier operation when it is passed in again. The new extents must
+    // replace them, not be appended to them.
+    Codec codec;
+    CompressResult result;
+
+    codec.compress(make_gradient(64, 64, 1), &result);
+    const std::size_t first = result.blocks.size();
+    ASSERT_EQ(first, result.block_count);
+
+    // A much smaller image needs far fewer blocks.
+    codec.compress(make_gradient(8, 8, 1), &result);
+    EXPECT_EQ(result.blocks.size(), result.block_count);
+    EXPECT_LT(result.blocks.size(), first);
+}
+
 TEST(Codec, ReportsNoExtentsForAFailedOperation) {
     // A rejected operation must not report the extents of an earlier one,
     // because they would describe a picture that is not the one the caller

@@ -156,6 +156,9 @@ std::vector<std::uint8_t> Codec::compress(const cv::Mat& source,
         result->block_count = blocks.size();
         result->compress_ms = (now_seconds() - started) * 1000.0;
 
+        // The result is the caller's, so it may still hold the extents of
+        // an earlier operation. They are replaced, not appended to.
+        result->blocks.clear();
         result->blocks.reserve(blocks.size());
         for (const RBlock& block : blocks) {
             result->blocks.emplace_back(block.lt().x, block.lt().y,
