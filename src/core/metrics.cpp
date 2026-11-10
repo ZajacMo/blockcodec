@@ -1,5 +1,6 @@
 #include "blockcodec/metrics.hpp"
 
+#include <cstddef>
 #include <limits>
 
 namespace blockcodec {

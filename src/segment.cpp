@@ -2,6 +2,8 @@
 
 #include <opencv2/imgproc.hpp>
 
+#include <vector>
+
 namespace blockcodec {
 
 cv::Mat segmentation_overlay(const cv::Mat& image,

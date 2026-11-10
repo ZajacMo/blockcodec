@@ -1,5 +1,7 @@
 #include "core/block.hpp"
 
+#include <cstddef>
+
 namespace blockcodec {
 
 Block::Block(cv::Point lt, cv::Point rb, int channels)
