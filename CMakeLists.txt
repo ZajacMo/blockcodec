@@ -13,8 +13,7 @@ set(CMAKE_AUTORCC ON)
 
 # The codec is the reusable part of this project: a self-contained static
 # library with no dependency on Qt. Consumers that only need the
-# compression algorithm can link `opencv_codec` and ignore the GUI.
-option(BUILD_GUI_APP "Build the Qt GUI application" ON)
+# compression algorithm can link `blockcodec` and ignore the GUI.
 option(BUILD_TESTING "Build the codec round-trip tests" ON)
 
 find_package(OpenCV REQUIRED)
@@ -154,6 +153,8 @@ set_target_properties(legacy_codec PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # ---------------------------------------------------------------------------
 option(BLOCKCODEC_BUILD_GUI "Build the Qt GUI example" ON)
 # The old spelling, kept so that the existing CI workflow keeps working.
+# It was declared twice before, and the second declaration won, which
+# meant that passing -DBUILD_GUI_APP=OFF still built the GUI.
 option(BUILD_GUI_APP "Deprecated alias for BLOCKCODEC_BUILD_GUI" OFF)
 if(BUILD_GUI_APP)
     set(BLOCKCODEC_BUILD_GUI ON)
