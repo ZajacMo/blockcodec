@@ -1,0 +1,3 @@
+# Batch files must keep CRLF endings: cmd.exe is not guaranteed to parse
+# the multi-line parenthesised blocks in these scripts with LF.
+*.bat text eol=crlf
