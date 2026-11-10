@@ -271,8 +271,10 @@ sides **without either side depending on its own position**. This is what
 removes the implicit coupling of the legacy format.
 
 `corners` holds four samples per channel in the order top-left, top-right,
-bottom-left, bottom-right. A block that is a single pixel holds one sample
-per channel instead, since all four corners are the same pixel.
+bottom-left, bottom-right. A block that is a single pixel stores all four
+corners as well; they are the same pixel, and storing the four samples
+uniformly means every block has the same size, which keeps the decoder's
+bookkeeping trivial.
 
 The block count is stored in the header, so the decoder knows exactly how
 many blocks to read and never has to guess where the payload ends.
