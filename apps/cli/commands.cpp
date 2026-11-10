@@ -120,7 +120,9 @@ int run_info(const std::string& input) {
 
     std::printf("file          %s\n", input.c_str());
     std::printf("  version     %u\n", static_cast<unsigned>(kFormatVersion));
-    std::printf("  dimensions  %u x %u\n", header.rows, header.cols);
+    // The dimensions are printed as width by height, the same order the
+    // decompress command uses and the same order the image formats use.
+    std::printf("  dimensions  %u x %u\n", header.cols, header.rows);
     std::printf("  channels    %u\n", static_cast<unsigned>(header.channels));
     std::printf("  depth       %u bits\n", static_cast<unsigned>(header.depth_bits));
     std::printf("  blocks      %u\n", header.block_count);

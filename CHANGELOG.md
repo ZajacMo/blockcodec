@@ -39,8 +39,18 @@ The release in which the coursework project became a reusable library.
 - **The test suites**: the bit stream, the container format, the codec, the
   metrics, the robustness, the command line, the benchmark, the reference
   vectors and the golden regression test.
+- **Continuous integration.** Four jobs in `.github/workflows/build.yml`:
+  Linux with GCC, Linux with Clang, Windows with MSVC, and a build under
+  AddressSanitizer and UndefinedBehaviorSanitizer. The Qt GUI is built by a
+  fifth job that is allowed to fail, because the library is the deliverable
+  and the GUI is not. The test run is checked by `tools/check_ctest.py`,
+  which fails on a suite that ran no check, reported a failing check or
+  skipped its input, because the exit code of ctest alone would not notice
+  any of those.
 - **The reference vectors** in `tests/vectors/`: `gradient_16x16.bcc` and
-  `gradient_16x16_colour.bcc`, with their reference images.
+  `gradient_16x16_colour.bcc`, with their reference images, and
+  `truncation_3x16.bcc`, a constructed image whose blocks pin the number of
+  roundings the interpolation performs.
 - **`docs/ALGORITHM_BCC.md`**, the specification of the `.bcc` container.
 
 ### Changed
@@ -78,6 +88,13 @@ The release in which the coursework project became a reusable library.
   becomes a clean error rather than a silently accepted one.
 - The block extents are replaced, not appended to, when a result is passed in
   again.
+- The command line tool exits with zero for `--help`, which is a successful
+  completion. It exited with the usage-error code, so a script that checked
+  the exit status saw a failure where there was none.
+- The command line tool prints the dimensions of a container as width by
+  height, the order the image formats use and the order the `decompress`
+  command already used. It printed them as height by width, so a landscape
+  image was reported with its two sides the wrong way round.
 
 ### Removed
 
@@ -90,7 +107,7 @@ The release in which the coursework project became a reusable library.
 ### Notes on the results
 
 The benchmark shows the codec losing to JPEG on every natural image at the
-matched quality, by between 1.7× and 9.1× the file size. It wins on the
+matched quality, by between 2.5× and 9.1× the file size. It wins on the
 16×16 samples, because its fixed 20-byte header is smaller than a JPEG
 header. The value of this release is the exact format specification, the
 reproducible benchmark and the test suite, not a claim to beat JPEG. See

@@ -36,6 +36,11 @@ std::vector<std::string> image_paths() {
         "images/f16.bmp",
         "images/lena512.bmp",
         "images/baboonzyp512.bmp",
+        // The landscape greyscale image. The legacy decoder inferred colour
+        // from `cols > rows`, so this is the shape that the inference gets
+        // wrong, and the golden test is what proves the two implementations
+        // agree on it.
+        "images/landscape_grey.bmp",
     };
 }
 

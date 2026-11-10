@@ -157,7 +157,7 @@ matched quality.
 
 - **On every natural image, at every matched quality, JPEG is smaller.** The
   gap is large — across the natural samples above, the blockcodec file is
-  between 1.7× and 9.1× the size of the JPEG file at the same quality, and
+  between 2.5× and 9.1× the size of the JPEG file at the same quality, and
   usually 3× to 7×. A block that costs four corner samples to describe is
   expensive, and JPEG's transform, quantisation and entropy coding are simply
   a better way to spend the same bits on a photograph.
@@ -371,6 +371,14 @@ Subcommands:
   info                        Print the header of a container
 ```
 
+The exit code is 0 when the command succeeded, 1 when it failed at run time
+(a file that cannot be read, a container that is malformed) and 2 when the
+command line itself was wrong. `--help` exits with 0, because asking for the
+help is a successful completion.
+
+The `info` command prints the dimensions as **width by height**, the order
+the image formats use.
+
 ### `compress`
 
 ```
@@ -432,6 +440,32 @@ The current library does support colour properly:
   one channel reduces to the greyscale rule exactly and the codec cannot
   accept a block that is good in one channel and bad in another.
 
+The case that catches the old inference is an image that is **wider than it
+is tall** and has one channel. `images/landscape_grey.bmp` is 256 pixels wide
+and 128 pixels tall, and the golden regression test runs it against the
+legacy implementation, so the two are proved to agree on it.
+
+```
+$ blockcodec compress images/landscape_grey.bmp -o landscape.bcc -s 10
+wrote landscape.bcc
+  bits        85428
+  bytes       10699
+  bpp         2.607056
+  cr          3.068596
+  psnr        36.8419 dB
+  blocks      1356
+  encode      4.24 ms
+
+$ blockcodec info landscape.bcc
+file          landscape.bcc
+  version     1
+  dimensions  256 x 128
+  channels    1
+  depth       8 bits
+  blocks      1356
+  payload     10679 bytes
+```
+
 ```
 $ blockcodec compress images/lenaColorful.bmp -o color.bcc -s 20
 wrote color.bcc
@@ -459,7 +493,7 @@ A 4-channel image round trips the same way:
 $ blockcodec info ps.bcc
 file          ps.bcc
   version     1
-  dimensions  645 x 1274
+  dimensions  1274 x 645
   channels    4
   depth       8 bits
   blocks      28736

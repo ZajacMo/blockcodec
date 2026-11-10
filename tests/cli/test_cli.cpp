@@ -50,6 +50,30 @@ std::string read_file(const std::string& path) {
                        std::istreambuf_iterator<char>());
 }
 
+// Runs the executable and returns what it printed.
+std::string run_capturing(const std::string& arguments) {
+    const std::string command = "\"" + executable + "\" " + arguments;
+#ifdef _WIN32
+    std::FILE* pipe = _popen(command.c_str(), "r");
+#else
+    std::FILE* pipe = popen(command.c_str(), "r");
+#endif
+    if (pipe == nullptr) {
+        return "";
+    }
+    std::string output;
+    char buffer[512];
+    while (std::fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+        output += buffer;
+    }
+#ifdef _WIN32
+    _pclose(pipe);
+#else
+    pclose(pipe);
+#endif
+    return output;
+}
+
 }  // namespace
 
 int main() {
@@ -93,8 +117,30 @@ int main() {
     // An unknown command is an error.
     check(run("nonsense") != 0, "an unknown command is an error");
 
+    // Asking for the help is a successful completion, so it exits with
+    // zero. A script that runs `blockcodec --help` and checks the exit
+    // status must not see a failure.
+    check(run("--help") == 0, "--help exits with 0");
+    check(run("-h") == 0, "-h exits with 0");
+
+    // The dimensions are printed as width by height, the order the image
+    // formats use. The test image is square, so it cannot tell the two
+    // orders apart; the landscape greyscale image is 256 pixels wide and
+    // 128 pixels tall, so it can.
+    const std::string landscape_container = "blockcodec_cli_landscape.bcc";
+    check(run("compress images/landscape_grey.bmp -o " + landscape_container +
+              " --sigma 10") == 0,
+          "compressing a landscape image exits with 0");
+
+    const std::string info = run_capturing("info " + landscape_container);
+    check(info.find("dimensions  256 x 128") != std::string::npos,
+          "info prints the dimensions as width by height");
+    check(info.find("channels    1") != std::string::npos,
+          "info reports the channel count of a greyscale image as one");
+
     std::remove(container.c_str());
     std::remove(output.c_str());
+    std::remove(landscape_container.c_str());
 
     std::printf("\n======================\n");
     std::printf("%d checks, %d failed\n", checks, failures);

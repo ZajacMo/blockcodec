@@ -103,6 +103,38 @@ TEST(Codec, KeepsLandscapeGreyscaleGreyscale) {
     EXPECT_EQ(decoded.channels(), 1u);
 }
 
+TEST(Codec, KeepsTheLandscapeSampleImageGreyscale) {
+    // The same case as the test above, but with the sample image that is
+    // versioned in `images/`. The image is wider than it is tall, which is
+    // the shape the legacy inference got wrong, and the file is the one the
+    // benchmark and the documentation quote.
+    const cv::Mat source = cv::imread("images/landscape_grey.bmp",
+                                       cv::IMREAD_UNCHANGED);
+    ASSERT_FALSE(source.empty())
+        << "the sample image images/landscape_grey.bmp is missing; the test "
+        << "runs with the source directory as the working directory";
+    ASSERT_EQ(source.cols, 256);
+    ASSERT_EQ(source.rows, 128);
+    ASSERT_EQ(source.channels(), 1);
+
+    Codec codec;
+    CompressResult result;
+    const std::vector<std::uint8_t> container = codec.compress(source, &result);
+
+    std::vector<std::uint8_t> payload;
+    const blockcodec::ContainerHeader header =
+        blockcodec::read_container(container, payload);
+    EXPECT_EQ(header.channels, 1u);
+    EXPECT_FALSE(header.colour);
+    EXPECT_EQ(header.cols, 256u);
+    EXPECT_EQ(header.rows, 128u);
+
+    const cv::Mat decoded = codec.decompress(container, &result);
+    EXPECT_EQ(decoded.cols, 256);
+    EXPECT_EQ(decoded.rows, 128);
+    EXPECT_EQ(decoded.channels(), 1u);
+}
+
 TEST(Codec, ColourCostsTheSameAsGreyscale) {
     // The three channels of this image hold the same values, so the colour
     // image describes the same picture as the greyscale one and must

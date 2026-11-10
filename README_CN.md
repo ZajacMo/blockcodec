@@ -138,7 +138,7 @@ blockcodec_bench --images images --sigmas 1,5,10,20,30,50 --baseline jpeg
 
 - **在每一张自然图像上、在每一个对齐质量上，JPEG 的文件都更小。**
   差距很大 —— 在上面的自然图像样例中，blockcodec 的文件是同等质量下 JPEG 文件的
-  1.7× 到 9.1×，通常在 3× 到 7× 之间。一个块需要四个角点采样来描述，代价高昂；
+  2.5× 到 9.1×，通常在 3× 到 7× 之间。一个块需要四个角点采样来描述，代价高昂；
   而 JPEG 的变换、量化和熵编码在照片上确实是用同样比特数的更优方式。
 - **在 16×16 样例上，blockcodec 胜出。** 原因并不是它压缩得更好，
   而是它的容器有一个固定的 20 字节头部，而同一张图的 JPEG 光是头部和表格就要 338–547 字节。
@@ -339,6 +339,11 @@ Subcommands:
   info                        Print the header of a container
 ```
 
+退出码在命令成功时为 0，在运行时失败时为 1（文件读不出来、容器格式不合法），
+在命令行本身有误时为 2。`--help` 的退出码是 0，因为请求帮助是一次成功的完成。
+
+`info` 命令按 **宽 × 高** 的顺序打印尺寸，与图像格式本身的顺序一致。
+
 ### `compress`
 
 ```
@@ -394,6 +399,31 @@ wrote lena.png (512x512, 1 channels)
 - 块检验比较各通道偏差的 **最大值**，因此单通道恰好退化为灰度规则，
   编解码器不会接受某个通道很好而另一个通道很差的块。
 
+能暴露旧有推断错误的情形，是一张 **宽大于高** 且只有单通道的图像。
+`images/landscape_grey.bmp` 宽 256 像素、高 128 像素，黄金回归测试把它与旧实现
+放在一起比较，因此证明了两者在它上面结论一致。
+
+```
+$ blockcodec compress images/landscape_grey.bmp -o landscape.bcc -s 10
+wrote landscape.bcc
+  bits        85428
+  bytes       10699
+  bpp         2.607056
+  cr          3.068596
+  psnr        36.8419 dB
+  blocks      1356
+  encode      4.24 ms
+
+$ blockcodec info landscape.bcc
+file          landscape.bcc
+  version     1
+  dimensions  256 x 128
+  channels    1
+  depth       8 bits
+  blocks      1356
+  payload     10679 bytes
+```
+
 ```
 $ blockcodec compress images/lenaColorful.bmp -o color.bcc -s 20
 wrote color.bcc
@@ -421,7 +451,7 @@ file          color.bcc
 $ blockcodec info ps.bcc
 file          ps.bcc
   version     1
-  dimensions  645 x 1274
+  dimensions  1274 x 645
   channels    4
   depth       8 bits
   blocks      28736

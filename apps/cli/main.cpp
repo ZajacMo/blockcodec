@@ -45,8 +45,15 @@ int main(int argc, char** argv) {
     } catch (const CLI::ParseError& e) {
         // A usage error is not a runtime failure, so it gets its own exit
         // code rather than the one the runtime errors use.
+        //
+        // The message is printed by CLI11. The exit code is not taken from
+        // it, because asking for the help is a successful completion and
+        // CLI11 gives it the code zero: `blockcodec --help` has to exit
+        // with zero, or a script that checks the exit status sees a
+        // failure where there was none.
         app.exit(e);
-        return 2;
+        return e.get_exit_code() == 0 ? blockcodec::cli::kExitSuccess
+                                       : blockcodec::cli::kExitUsageError;
     }
 
     try {
@@ -63,9 +70,9 @@ int main(int argc, char** argv) {
         }
     } catch (const std::exception& e) {
         std::cerr << "blockcodec: " << e.what() << "\n";
-        return 1;
+        return blockcodec::cli::kExitRuntimeError;
     }
 
     std::cerr << "blockcodec: no command given\n";
-    return 2;
+    return blockcodec::cli::kExitUsageError;
 }
