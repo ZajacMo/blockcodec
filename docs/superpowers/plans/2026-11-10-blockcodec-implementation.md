@@ -287,15 +287,21 @@ Expected: the legacy console implementation is present for reference. It is not
 compiled by the top-level CMake.
 
 **Use this copy, not the repository's own `Compress_gray`.** The VS copy has
-been converted to UTF-8 with English comments, and it fixes a double free:
-`Bits::loadedInfo` was never initialised, so the destructor freed an
-uninitialised pointer. The two versions differ only in comments and in that
-fix — the block algorithm is byte for byte identical, which was verified by
-comparing the sources with the comments stripped. The VS copy is therefore
-the better source for the oracle, and it is free of the crash.
+been converted to UTF-8 with English comments, and it carries a set of
+defect fixes that the repository's own copy has in a slightly different form.
+The block algorithm — `compress`, `decode`, `encode`, `findBlock`, `findRb`,
+`isPeer`, `getDepth`, `getPSNR`, `newMatrix`, `save`, `setEncodedImg` and
+`uncompress` — is identical between the two, which was verified by comparing
+the sources with the comments stripped. The differences are all in the
+error handling and the memory management:
 
-The repository's own `Compress_gray` is the GBK original with the same crash.
-It stays where it is until Task 10, and is deleted then.
+- `deleteMatrix` sets the pointer to null after deleting it.
+- `init_compress` rejects an empty image and a depth other than `CV_8U`.
+- `init_uncompress` validates the dimensions read from the file.
+- `Bits::init` sizes its buffer from the real file length.
+
+The VS copy is therefore the better source for the oracle. The repository's
+own copy stays where it is until Task 10, and is deleted then.
 
 - [ ] **Step 3: Copy the CLion prototype into `apps/prototype/`, without its build output**
 
@@ -323,8 +329,10 @@ It predates the class-based implementation in two ways that matter:
 
 - Its functions are free functions (`RNAMCEncoding`, `RNAMCDecoding`, `PSNR`,
   `BPP`, `segmentDisplay`) rather than methods on a class.
-- It uses the term `EPSILON` for the block tolerance. The library calls the
-  same parameter `sigma`.
+- It calls the block tolerance `xgm`. The library calls the same parameter
+  `sigma`. The name `EPSILON` appears only in the prototype's README and in
+  the prose of `main.cpp`, where it describes the fourth command line
+  argument; it is not a name in the source.
 
 The two implementations of the algorithm correspond as follows:
 
@@ -1369,10 +1377,10 @@ cp /f/Projects/01_courses/cpp/VS_C++Project/test_openCV/Compress_gray.h \
 ```
 
 These copies come from the VS repository rather than from this one, because
-that version has been converted to UTF-8 with English comments and has the
-double free in `Bits::loadedInfo` fixed. The two versions differ only in
-comments and in that fix; the block algorithm is identical, which was
-verified by comparing the sources with the comments stripped.
+that version has been converted to UTF-8 with English comments and carries
+the stricter error handling and the null-pointer guard in `deleteMatrix`.
+The block algorithm is identical between the two, which was verified by
+comparing the sources with the comments stripped.
 
 The copies are only compiled on Windows by a test-only target, because they
 include `windows.h`. The originals in this repository are deleted in Task 10,
