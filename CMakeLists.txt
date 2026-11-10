@@ -19,6 +19,32 @@ option(BUILD_TESTING "Build the codec round-trip tests" ON)
 
 find_package(OpenCV REQUIRED)
 
+# GoogleTest drives the unit tests. It is fetched rather than vendored so
+# that the dependency stays pinned to a known-good upstream release.
+include(FetchContent)
+FetchContent_Declare(
+    googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG v1.15.2
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(googletest)
+
+# ---------------------------------------------------------------------------
+# blockcodec - the reusable codec library
+# ---------------------------------------------------------------------------
+add_library(blockcodec STATIC
+    src/core/bitstream.cpp
+)
+target_include_directories(blockcodec
+    PUBLIC  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(blockcodec PUBLIC ${OpenCV_LIBS})
+set_target_properties(blockcodec PROPERTIES POSITION_INDEPENDENT_CODE ON)
+add_library(blockcodec::blockcodec ALIAS blockcodec)
+
 # ---------------------------------------------------------------------------
 # opencv_codec - the compression algorithm, usable without Qt
 # ---------------------------------------------------------------------------
@@ -104,4 +130,9 @@ if(BUILD_TESTING)
     # Used to produce the numbers quoted in README.md and ALGORITHM.md.
     add_executable(bench_sweep tests/bench_sweep.cpp)
     target_link_libraries(bench_sweep PRIVATE opencv_codec)
+
+    add_executable(test_bitstream tests/unit/test_bitstream.cpp)
+    target_link_libraries(test_bitstream PRIVATE blockcodec gtest_main)
+    add_test(NAME test_bitstream COMMAND test_bitstream
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
