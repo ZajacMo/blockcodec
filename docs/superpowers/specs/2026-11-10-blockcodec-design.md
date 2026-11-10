@@ -309,6 +309,42 @@ a partial image.
 These four rules are what an independent implementation needs to reproduce
 the stream exactly.
 
+### 7.3 What a decoder must reject, and what it may tolerate
+
+Every rule in this specification states one of two things: whether a decoder
+that finds the condition violated **must raise an error**, or whether it
+**may tolerate** it. The distinction matters, because a rule that is only
+described but not classified leaves the implementer to guess, and two
+implementers will guess differently.
+
+A decoder **must raise an error** when:
+
+- the magic number does not match;
+- the version is not one it understands;
+- `rows` or `cols` is zero;
+- the pixel count exceeds `kMaxPixels`;
+- `channels` is not between 1 and 4;
+- `depth_bits` is not one of the supported values;
+- the payload is shorter than `block_count` blocks require;
+- a block lies outside the image;
+- the padding bits after the last block are not zero.
+
+A decoder **may tolerate**:
+
+- trailing bytes after the payload. A file that was concatenated with
+  something else is still decodable, and rejecting it would be
+  unfriendly.
+
+Everything else in this specification is exact: a conforming encoder and a
+conforming decoder produce identical bits, and a decoder that accepts a
+malformed file instead of rejecting it is not conforming.
+
+Note that the padding check is listed as an error even though a decoder that
+stops after `block_count` blocks never has to look at the padding. The check
+is required, because it turns a corrupted file into a clean error rather
+than a silently accepted one, and requiring it in the specification means
+every implementation performs it, not only those that happened to write it.
+
 ## 8. Defects to fix
 
 These were found by reading the code and are not optional cleanups; an
