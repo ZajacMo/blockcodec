@@ -29,8 +29,18 @@ void check(bool condition, const std::string& what) {
 std::string executable;
 
 // Runs the executable and returns its exit code.
+//
+// The output of the command is discarded. The device that discards it is
+// called NUL on Windows and /dev/null everywhere else, and using the
+// wrong one would create a file named NUL in the working directory.
 int run(const std::string& arguments) {
-    const std::string command = "\"" + executable + "\" " + arguments + " > NUL 2>&1";
+#ifdef _WIN32
+    const std::string null_device = "NUL";
+#else
+    const std::string null_device = "/dev/null";
+#endif
+    const std::string command =
+        "\"" + executable + "\" " + arguments + " > " + null_device + " 2>&1";
     return std::system(command.c_str());
 }
 

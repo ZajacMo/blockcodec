@@ -8,6 +8,13 @@ on:
   workflow_dispatch:
 
 jobs:
+  # ------------------------------------------------------------------
+  # The library is built and tested on Linux with GCC, on Linux with
+  # Clang and on Windows with MSVC. The Windows job matters most: the
+  # golden regression test compares the new codec against the legacy
+  # implementation, and that legacy code is what the Windows path
+  # compiles.
+  # ------------------------------------------------------------------
   build-test:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
@@ -25,8 +32,6 @@ jobs:
 
           - name: Windows (MSVC 2022)
             os: windows-2022
-            qt: '6.6.2'
-            qt_arch: msvc2019_64
             vcpkg_triplet: x64-windows
             vcpkg_opencv: opencv4
 
@@ -65,12 +70,9 @@ jobs:
         if: runner.os == 'Linux'
         run: cmake --build build --parallel 2
 
-      - name: Run tests (Ubuntu)
-        if: runner.os == 'Linux'
-        run: ctest --test-dir build --output-on-failure
-
       # ------------------------------------------------------------------
-      # Windows: install Qt via aqtinstall and OpenCV via vcpkg
+      # Windows: OpenCV comes from vcpkg, the generator is the Visual
+      # Studio one, so the multi configuration build needs -C Release.
       # ------------------------------------------------------------------
       - name: Set up vcpkg
         if: runner.os == 'Windows'
@@ -79,20 +81,10 @@ jobs:
           vcpkg\bootstrap-vcpkg.bat -disableMetrics
           vcpkg\vcpkg.exe install ${{ matrix.vcpkg_opencv }}:${{ matrix.vcpkg_triplet }}
 
-      - name: Install Qt (Windows)
-        if: runner.os == 'Windows'
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ matrix.qt }}
-          arch: ${{ matrix.qt_arch }}
-          modules: none
-          cache: true
-
       - name: Configure (Windows)
         if: runner.os == 'Windows'
         run: |
           cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
-            -DCMAKE_PREFIX_PATH="${{ env.Qt6_DIR }}" `
             -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake `
             -DBLOCKCODEC_BUILD_GUI=OFF `
             -DBUILD_TESTING=ON
@@ -101,13 +93,34 @@ jobs:
         if: runner.os == 'Windows'
         run: cmake --build build --config Release --parallel 2
 
-      # The golden regression test compares against the legacy implementation,
-      # which is the Windows path that compiles it, so this job is the one
-      # that has to pass.
+      # ------------------------------------------------------------------
+      # The tests. The checker is stricter than ctest itself: it fails
+      # when a suite ran without a single check, when a suite reported a
+      # failing check of its own, or when a suite is missing. The exit
+      # code of ctest alone would not notice a suite that quietly
+      # skipped its work.
+      # ------------------------------------------------------------------
+      - name: Run tests (Ubuntu)
+        if: runner.os == 'Linux'
+        run: python3 tools/check_ctest.py --build-dir build --expected-suites 10
+
+      # The golden regression test compares against the legacy
+      # implementation, which is the Windows path that compiles it, so
+      # this job is the one that has to pass.
       - name: Run tests (Windows)
         if: runner.os == 'Windows'
-        run: ctest --test-dir build -C Release --output-on-failure
+        run: python tools/check_ctest.py --build-dir build --config Release --expected-suites 10
 
+  # ------------------------------------------------------------------
+  # AddressSanitizer and UndefinedBehaviorSanitizer. This is the job
+  # that guards the classes of defect the codec is careful about: a
+  # buffer that overflowed, a read of uninitialised memory, and a
+  # shift past the width of an integer.
+  #
+  # The OpenCV libraries are found at run time through libopencv-dev,
+  # which puts them on the loader path. A loader error shows up as a
+  # failed test, not as an assertion failure.
+  # ------------------------------------------------------------------
   sanitizers:
     name: Sanitizers (ASan, UBSan)
     runs-on: ubuntu-22.04
@@ -124,30 +137,37 @@ jobs:
             ninja-build \
             libopencv-dev
 
-      # The sanitizers are here to catch the classes of defect the codec is
-      # careful about: a buffer that overflowed, a read of uninitialised
-      # memory, and a shift past the width of an integer.
+      # -fno-sanitize-recover turns an undefined operation into a fatal
+      # error. Without it UndefinedBehaviorSanitizer only prints a
+      # diagnostic and lets the program continue, so a program with an
+      # undefined shift in it would still pass.
       - name: Configure
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Debug \
             -DBLOCKCODEC_BUILD_GUI=OFF \
             -DBUILD_TESTING=ON \
-            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined" \
             -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
 
       - name: Build
         run: cmake --build build --parallel 2
 
       - name: Run tests
-        run: ctest --test-dir build --output-on-failure
+        env:
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+          ASAN_OPTIONS: detect_leaks=1
+        run: python3 tools/check_ctest.py --build-dir build --expected-suites 10
 
+  # ------------------------------------------------------------------
+  # The Qt GUI is an example application. It is built here so that a
+  # breakage in it is visible, but it must not fail the pipeline: the
+  # library itself is the deliverable and the GUI is not.
+  # ------------------------------------------------------------------
   gui:
     name: Qt GUI
     runs-on: ubuntu-22.04
 
-    # The GUI is an example application. A failure there is visible but it
-    # must not fail the whole pipeline.
     continue-on-error: true
 
     steps:
@@ -176,4 +196,4 @@ jobs:
         run: cmake --build build --parallel 2
 
       - name: Run tests
-        run: ctest --test-dir build --output-on-failure
+        run: python3 tools/check_ctest.py --build-dir build --expected-suites 10

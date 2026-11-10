@@ -49,9 +49,17 @@ std::vector<std::string> split(const std::string& text, char separator) {
 // Runs the benchmark with the given arguments and returns its exit code.
 //
 // The output of the benchmark is discarded, so that a passing test run does
-// not fill the log with the tables.
+// not fill the log with the tables. The device that discards it is called
+// NUL on Windows and /dev/null everywhere else, and using the wrong one
+// would create a file named NUL in the working directory.
 int run(const std::string& arguments) {
-    const std::string command = "\"" + executable + "\" " + arguments + " > NUL 2>&1";
+#ifdef _WIN32
+    const std::string null_device = "NUL";
+#else
+    const std::string null_device = "/dev/null";
+#endif
+    const std::string command =
+        "\"" + executable + "\" " + arguments + " > " + null_device + " 2>&1";
     return std::system(command.c_str());
 }
 
