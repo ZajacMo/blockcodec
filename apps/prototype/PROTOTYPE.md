@@ -8,8 +8,10 @@ It predates the class-based implementation in two ways that matter:
 
 - Its functions are free functions (`RNAMCEncoding`, `RNAMCDecoding`, `PSNR`,
   `BPP`, `segmentDisplay`) rather than methods on a class.
-- It uses the term `EPSILON` for the block tolerance. The library calls the
-  same parameter `sigma`.
+- It calls the block tolerance `xgm`. The library calls the same parameter
+  `sigma`. The name `EPSILON` appears only in this prototype's README and in
+  the prose of its `main.cpp`, where it describes the fourth command line
+  argument; it is not a name in the source.
 
 The two implementations of the algorithm correspond as follows:
 
@@ -24,8 +26,14 @@ The two implementations of the algorithm correspond as follows:
 
 Two things in the prototype are worth keeping in mind:
 
-- Its `BPP()` is the closest to correct of the three historical
-  implementations, and is the definition the library adopts.
+- Its `BPP()` estimates the bits per pixel of the *format* rather than
+  measuring a stream: it takes the length of the position stream `q` and adds
+  the colour samples that a conforming encoder would have to write — 16 bits
+  for a block with four corner samples, 8 for one with two, 4 for an isolated
+  pixel — then divides by the pixel count. It is therefore a genuine *bits per
+  pixel* figure, which is the definition the library adopts. The class-based
+  implementations instead divide the bit count by eight, so they report
+  *bytes per pixel* while calling the result a bit count.
 - Its `segmentDisplay()` draws the block boundaries. The library exposes the
   same capability as `segmentation_overlay`.
 
