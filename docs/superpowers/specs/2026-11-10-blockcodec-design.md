@@ -143,6 +143,11 @@ struct CompressResult {
     double      compress_ms = 0;
     double      decompress_ms = 0;
     std::size_t block_count = 0;
+
+    // The extents of the blocks, in image coordinates. Both the encoder
+    // and the decoder fill them in, so an overlay can be built from a
+    // container that a different codec instance decoded.
+    std::vector<cv::Rect> blocks;
 };
 
 class Codec {
@@ -152,8 +157,6 @@ public:
     CompressResult compress(const cv::Mat& source);
     cv::Mat         decompress(const std::vector<std::uint8_t>& container);
     cv::Mat         decompress(const std::string& path);
-
-    CompressResult  last_result() const;
 };
 
 }  // namespace blockcodec
