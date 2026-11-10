@@ -429,10 +429,15 @@ that applies the wrong one produces a different image there.
 The other two vectors were not built to catch this, and they are not
 measured to catch it either. They are there for the block layout, the field
 widths and the per-channel corner layout, and each of them has been checked
-against the mistake it is meant to catch. Whether the first two would also
-notice a change in the number of roundings depends on the pictures and on
-the corners the encoder happened to choose for them, and no claim is made
-about that here.
+against the mistake it is meant to catch.
+
+Whether a given block distinguishes the two rules is decided by its corner
+values, not by its size. The rules differ only where an intermediate ratio
+is not exactly representable as a double, and the corners decide whether
+the difference survives the truncation. A block of any size may or may not
+distinguish them; no size guarantees it. The two rules therefore agree on
+the first two vectors because of the corner values the encoder happened to
+choose for them, and the third vector was constructed so that they do not.
 
 The third vector is the one to use for the rounding rule, because it was
 constructed for it.
