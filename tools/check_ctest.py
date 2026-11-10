@@ -186,7 +186,10 @@ def parse(log: str) -> list[Suite]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build-dir", required=True, help="the directory ctest runs in")
-    parser.add_argument("--config", help="the build configuration, e.g. Release")
+    # The build tree is a multi configuration one, so the configuration has
+    # to be named. Without it ctest finds no test at all.
+    parser.add_argument("--config", default="Release",
+                        help="the build configuration, e.g. Release")
     parser.add_argument(
         "--expected-suites",
         type=int,
