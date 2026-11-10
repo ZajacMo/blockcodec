@@ -229,8 +229,15 @@ Two things need care here, and they are easy to conflate:
    colour images. On greyscale images the two agree, which is why the bug
    went unnoticed.
 
-The CLion prototype's `BPP()` is the closest to correct and is used as the
-reference definition. The new API reports `bpp` and `cr` as distinct,
+The CLion prototype's `BPP()` is the reference definition. It adds the
+length of the position stream to the colour samples a conforming encoder
+would have to write — 16 bits for a block with four corner samples, 8 for one
+with two, 4 for an isolated pixel — and divides by the pixel count. It is
+therefore a genuine bits-per-pixel figure.
+
+The two class-based implementations instead divide the bit count by eight, so
+they report *bytes per pixel* while calling the result a bit count. That is
+where the factor-of-eight confusion in the old documentation comes from. The new API reports `bpp` and `cr` as distinct,
 explicitly named fields, so the ambiguity cannot recur.
 
 ## 7. File format
