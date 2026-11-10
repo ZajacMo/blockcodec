@@ -2,12 +2,23 @@
 //
 // The vectors in `tests/vectors/` are what an independent implementation is
 // compared against, so they must not depend on the compiler that produced
-// them. If the encoder changes, or a compiler rounds differently, the
-// vectors have to change with it, and this test fails until they are
-// regenerated and committed.
+// them. If a compiler rounds differently, the vectors have to change with
+// it, and this test fails until they are regenerated and committed.
 //
-// The test regenerates the vectors into a temporary directory and compares
-// them with the ones in the repository, byte for byte.
+// What this test guards is that the **vectors agree with the encoder as it
+// stands**. It is not a check that the encoder has not changed. The
+// vectors are insensitive to a change in the block search: their three
+// pictures compress to the same container at every tolerance from 8 to 12,
+// because their blocks are chosen the same way whatever the tolerance is.
+// So an encoder whose block search changed leaves this test passing, and
+// the vectors are regenerated and committed with that change. That is the
+// intended behaviour: the vectors belong to the format, and a change of
+// the format changes them.
+//
+// The workflow adds the other half of the check: it regenerates the
+// vectors and asks git whether the files in the repository changed. That
+// catches a vector that was edited by hand or that was left behind when
+// the encoder changed.
 
 #include "blockcodec/codec.hpp"
 
@@ -70,9 +81,9 @@ void check_vector_is_reproducible(const std::string& name) {
     ASSERT_EQ(produced.size(), expected.size())
         << name << ": the regenerated container has a different length";
     EXPECT_EQ(produced, expected)
-        << name << ": the regenerated container differs from the one in the "
-                   "repository. If the encoder changed on purpose, regenerate "
-                   "the vectors and commit them with the change.";
+        << name << ": the container in the repository does not match what the "
+                   "encoder produces now. If the encoder changed on purpose, "
+                   "regenerate the vectors and commit them with the change.";
 }
 
 }  // namespace

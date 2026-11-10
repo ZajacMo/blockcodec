@@ -483,6 +483,15 @@ each source image again and compares the result with the container in the
 repository, and by the workflow, which regenerates the vectors and asks git
 whether anything changed.
 
+What that guards is that the **vectors agree with the encoder as it
+stands**, not that the encoder has not changed. The three pictures
+compress to the same container at every tolerance from 8 to 12, because
+their blocks are chosen the same way whatever the tolerance is, so an
+encoder whose block search changed leaves the vectors alone. That is
+intended: the vectors belong to the format, and a change of the format
+changes them, which is why regenerating and committing them is part of such
+a change.
+
 ---
 
 ## 9. The legacy format
