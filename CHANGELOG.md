@@ -118,4 +118,4 @@ reproducible benchmark and the test suite, not a claim to beat JPEG. See
 Before 0.1.0 the project was a Qt coursework application named *OpenCV Image
 Processing and Compression Tool*. Its history is in the git log.
 
-[0.1.0]: https://github.com/ZajacMo/OpenCV-Image-Processing-and-Compression-Tool-Qt/releases/tag/v0.1.0
+[0.1.0]: https://github.com/ZajacMo/blockcodec/releases/tag/v0.1.0
