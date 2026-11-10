@@ -391,7 +391,7 @@ implementation is checked against. Each vector is three files:
 | `gradient_16x16.bcc` | the container the encoder produces from it |
 | `gradient_16x16_reference.bmp` | the image the container decodes to |
 
-And a second, colour one:
+A second, colour one:
 
 | File | Purpose |
 |------|---------|
@@ -399,14 +399,32 @@ And a second, colour one:
 | `gradient_16x16_colour.bcc` | its container |
 | `gradient_16x16_colour_reference.bmp` | the image it decodes to |
 
-The source is deterministic: a diagonal gradient (`value = x * 8 + y * 4`)
-with a constant `200` patch in the 4x4 top-left corner, which forces the
-encoder to emit both rectangular blocks and isolated pixels. The colour
-vector holds the same picture with a different value in each channel, so
-that a decoder which reads the corner samples in the wrong order produces a
-different image.
+And a third, which pins the number of roundings:
 
-Both vectors use `sigma = 10`.
+| File | Purpose |
+|------|---------|
+| `truncation_3x16_source.bmp` | a constructed image, 16x3, one channel |
+| `truncation_3x16.bcc` | its container |
+| `truncation_3x16_reference.bmp` | the image it decodes to |
+
+The third vector exists because the other two do not catch a decoder that
+truncates only at the end. Its blocks have corner values for which the two
+rules disagree, so a decoder that applies the wrong one produces a different
+image there and not on the others.
+
+The source of the first two is deterministic: a diagonal gradient
+(`value = x * 8 + y * 4`) with a constant `200` patch in the 4x4 top-left
+corner, which forces the encoder to emit both rectangular blocks and
+isolated pixels. The colour vector holds the same picture with a different
+value in each channel, so that a decoder which reads the corner samples in
+the wrong order produces a different image.
+
+The source of the third is a three by three tile placed at the left of a
+three by sixteen image whose remainder is a constant 255, so that the tiles
+cannot merge. The tile's corners are 0, 0, 29 and 31, and its interior
+pixel holds 14. The two truncation rules predict 14 and 15 for that pixel.
+
+All three vectors use `sigma = 10`.
 
 A conforming implementation must decode the container to **exactly** the
 pixels of the reference image. Not approximately: pixel for pixel, with no

@@ -69,6 +69,14 @@ TEST(Vector, DecodesTheColourVectorExactly) {
     check_vector("gradient_16x16_colour");
 }
 
+TEST(Vector, DecodesTheTruncationVectorExactly) {
+    // The truncation vector pins the number of roundings. Its blocks have
+    // corner values for which truncating once at the end and truncating
+    // after each interpolation give different answers, so a decoder that
+    // applies the wrong rule produces a different image.
+    check_vector("truncation_3x16");
+}
+
 TEST(Vector, TheColourVectorIsNotDecodableAsGreyscale) {
     // The two vectors hold different pictures, so a decoder that ignored
     // the channel count would produce the wrong result.

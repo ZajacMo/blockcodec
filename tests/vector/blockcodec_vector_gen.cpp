@@ -5,9 +5,19 @@
 // implementation must decode the container to exactly the pixels of the
 // reference image.
 //
-// Two vectors are written: one greyscale and one colour. The colour one
-// exists because the corner samples are stored per channel, and a decoder
-// that mixes the channels up would still pass on a greyscale image.
+// Three vectors are written. Each one catches a class of mistake that the
+// others cannot:
+//
+//   gradient_16x16          a greyscale gradient. It pins the block search
+//                           and the interpolation.
+//   gradient_16x16_colour   the same picture in three channels. The corner
+//                           samples are stored per channel, and a decoder
+//                           that reads them in the wrong order produces a
+//                           different image here and not on the greyscale
+//                           vector.
+//   truncation_3x16         a constructed image whose blocks have corner
+//                           values for which the two truncation rules
+//                           disagree. It pins the number of roundings.
 //
 // Run from the repository root:
 //   blockcodec_vector_gen [output_directory]
@@ -74,6 +84,47 @@ std::vector<std::uint8_t> make_vector(const std::string& outDir,
     return container;
 }
 
+// The image that pins the number of roundings.
+//
+// The interpolation truncates twice: once after the vertical interpolation
+// and once after the horizontal one. An implementation that interpolates
+// all four corners in full precision and truncates only the final result
+// gives a different answer.
+//
+// The tile below has corners tl = 0, tr = 0, bl = 29, br = 31 and an
+// interior pixel of 14. The two rules predict 14 and 15 for that pixel,
+// so a decoder that applies the wrong one differs from the reference.
+//
+// The encoder does not find this block on its own, because it tests the
+// 2x2 candidate first and rejects it, so the image has to be given to it.
+// The rest of the row is a constant 255, so the tiles cannot merge.
+cv::Mat make_truncation_image() {
+    const int height = 3;
+    const int width = 16;
+
+    cv::Mat source(height, width, CV_8UC1);
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            source.at<uchar>(y, x) = 255;
+        }
+    }
+
+    // The three by three tile. Every pixel holds what the two-step
+    // interpolation predicts for it, so the encoder accepts the block.
+    const int tile[3][3] = {
+        {0, 0, 0},
+        {14, 14, 15},
+        {29, 30, 31},
+    };
+    for (int y = 0; y < 3; ++y) {
+        for (int x = 0; x < 3; ++x) {
+            source.at<uchar>(y, x) = static_cast<uchar>(tile[y][x]);
+        }
+    }
+
+    return source;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -96,9 +147,9 @@ int main(int argc, char** argv) {
         }
     }
 
-    // The colour vector holds the same picture in three channels with
-    // different values per channel, so that a decoder that reads the
-    // corner samples in the wrong order produces a different image.
+    // The colour vector holds the same picture with a different value in
+    // each channel, so that a decoder which reads the corner samples in the
+    // wrong order produces a different image.
     cv::Mat colour(size, size, CV_8UC3);
     for (int y = 0; y < size; ++y) {
         for (int x = 0; x < size; ++x) {
@@ -116,5 +167,6 @@ int main(int argc, char** argv) {
     std::printf("Wrote the reference vectors to %s\n", outDir.c_str());
     make_vector(outDir, "gradient_16x16", grey, 10);
     make_vector(outDir, "gradient_16x16_colour", colour, 10);
+    make_vector(outDir, "truncation_3x16", make_truncation_image(), 10);
     return 0;
 }
