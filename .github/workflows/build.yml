@@ -114,14 +114,20 @@ jobs:
       # ------------------------------------------------------------------
       - name: Run tests (Ubuntu)
         if: runner.os == 'Linux'
-        run: python3 tools/check_ctest.py --build-dir build --expected-suites 10
+        run: python3 tools/check_ctest.py --build-dir build --expected-suites 11
 
       # The golden regression test compares against the legacy
       # implementation, which is the Windows path that compiles it, so
       # this job is the one that has to pass.
       - name: Run tests (Windows)
         if: runner.os == 'Windows'
-        run: python tools/check_ctest.py --build-dir build --config Release --expected-suites 10
+        run: python tools/check_ctest.py --build-dir build --config Release --expected-suites 11
+
+      - name: Check that the reference vectors are reproducible
+        if: runner.os == 'Windows'
+        run: |
+          .\build\Release\blockcodec_vector_gen.exe tests\vectors
+          git diff --exit-code -- tests/vectors
 
   # ------------------------------------------------------------------
   # AddressSanitizer and UndefinedBehaviorSanitizer. This is the job
@@ -169,7 +175,7 @@ jobs:
         env:
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
           ASAN_OPTIONS: detect_leaks=1
-        run: python3 tools/check_ctest.py --build-dir build --expected-suites 10
+        run: python3 tools/check_ctest.py --build-dir build --expected-suites 11
 
   # ------------------------------------------------------------------
   # The Qt GUI is an example application. It is built here so that a
@@ -208,4 +214,4 @@ jobs:
         run: cmake --build build --parallel 2
 
       - name: Run tests
-        run: python3 tools/check_ctest.py --build-dir build --expected-suites 10
+        run: python3 tools/check_ctest.py --build-dir build --expected-suites 11

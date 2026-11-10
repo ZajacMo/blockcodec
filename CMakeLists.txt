@@ -253,6 +253,17 @@ if(BUILD_TESTING)
     add_test(NAME test_vector COMMAND test_vector
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+    # The vectors must not depend on the compiler that produced them, so
+    # they are regenerated and compared with the ones in the repository.
+    add_executable(test_vector_reproducible tests/vector/test_vector_reproducible.cpp)
+    target_link_libraries(test_vector_reproducible PRIVATE blockcodec gtest_main)
+    target_compile_definitions(test_vector_reproducible PRIVATE
+        BLOCKCODEC_VECTOR_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/vectors"
+        BLOCKCODEC_VECTOR_GENERATOR="$<TARGET_FILE:blockcodec_vector_gen>")
+    add_dependencies(test_vector_reproducible blockcodec_vector_gen)
+    add_test(NAME test_vector_reproducible COMMAND test_vector_reproducible
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
     # The command line test drives the executable, so it is registered
     # after the target it runs.
     add_executable(test_cli tests/cli/test_cli.cpp)
