@@ -497,10 +497,41 @@ TEST(BitStream, ZeroBitCountIsRejected) {
 }
 ```
 
-- [ ] **Step 2: Add the test to CMake and confirm it fails**
+- [ ] **Step 2: Fetch GoogleTest and add the test to CMake**
 
-In the top-level `CMakeLists.txt`, inside the existing `if(BUILD_TESTING)` block,
-add:
+GoogleTest is fetched with `FetchContent`. Add this to the top-level
+`CMakeLists.txt`, before any target that uses it:
+
+```cmake
+include(FetchContent)
+FetchContent_Declare(
+    googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG v1.15.2
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(googletest)
+```
+
+The test links the `blockcodec` library, so that target has to exist. Create
+it now, with only the sources that exist so far. Task 5 adds the remaining
+sources to this list.
+
+```cmake
+add_library(blockcodec STATIC
+    src/core/bitstream.cpp
+)
+target_include_directories(blockcodec
+    PUBLIC  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(blockcodec PUBLIC ${OpenCV_LIBS})
+set_target_properties(blockcodec PROPERTIES POSITION_INDEPENDENT_CODE ON)
+add_library(blockcodec::blockcodec ALIAS blockcodec)
+```
+
+Then, inside the existing `if(BUILD_TESTING)` block, add:
 
 ```cmake
     add_executable(test_bitstream tests/unit/test_bitstream.cpp)
@@ -1939,7 +1970,8 @@ Then change the three places that link the old library name to link
 
 And change the GUI's link line from `opencv_codec` to `legacy_codec`.
 
-Finally, add the new library:
+The `blockcodec` library target was created in Task 3, with only the bit
+stream in it. Add the remaining sources to its source list:
 
 ```cmake
 add_library(blockcodec STATIC
@@ -1950,17 +1982,6 @@ add_library(blockcodec STATIC
     src/core/metrics.cpp
     src/format.cpp
 )
-
-target_include_directories(blockcodec
-    PUBLIC  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-            $<INSTALL_INTERFACE:include>
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
-)
-
-target_link_libraries(blockcodec PUBLIC ${OpenCV_LIBS})
-set_target_properties(blockcodec PROPERTIES POSITION_INDEPENDENT_CODE ON)
-
-add_library(blockcodec::blockcodec ALIAS blockcodec)
 ```
 
 
@@ -2094,24 +2115,15 @@ TEST(Golden, MatchesTheLegacyReconstructionForGreyscaleImages) {
 
 - [ ] **Step 3: Register the oracle and the test**
 
-Add to `CMakeLists.txt`, before the `if(BUILD_TESTING)` block:
+The `legacy_codec` library was created in Task 5 and already builds the
+copies under `tests/legacy/`. It is **not** created again here; a second
+definition of the same target would fail at the configure stage.
 
-```cmake
-# The legacy implementation, kept only as a test oracle. It uses windows.h
-# and is therefore only built on Windows.
-if(BUILD_TESTING AND WIN32)
-    add_library(legacy_codec STATIC
-        tests/legacy/Compress_gray.cpp
-        tests/legacy/Bits.cpp
-        tests/legacy/Block.cpp
-        tests/legacy/RBlock.cpp
-    )
-    target_include_directories(legacy_codec PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tests/legacy)
-    target_link_libraries(legacy_codec PUBLIC ${OpenCV_LIBS})
-endif()
-```
+It is currently built on every platform, because the GUI still links it. The
+golden test only uses it on Windows, since the legacy sources include
+`windows.h`.
 
-And inside `if(BUILD_TESTING)`:
+Add inside `if(BUILD_TESTING)`:
 
 ```cmake
     if(TARGET legacy_codec)
@@ -2386,10 +2398,11 @@ git commit -m "feat: add explicit metric helpers and robustness tests"
 
 - [ ] **Step 1: Add CLI11**
 
-Add to `CMakeLists.txt`, before `add_library(blockcodec ...)`:
+Add to `CMakeLists.txt`, before `add_library(blockcodec ...)`. The
+`include(FetchContent)` line was already added in Task 3, so only the
+declaration is repeated here:
 
 ```cmake
-include(FetchContent)
 FetchContent_Declare(
     CLI11
     GIT_REPOSITORY https://github.com/CLIUtils/CLI11.git
