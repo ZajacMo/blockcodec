@@ -105,10 +105,14 @@ resourses.qrc               -> apps/qt/resourses.qrc
 ### Deleted
 
 ```
-Bits.cpp/.h, Block.cpp/.h, RBlock.cpp/.h, Compress_gray.cpp/.h   Moved to tests/legacy/
+Bits.cpp/.h, Block.cpp/.h, RBlock.cpp/.h, Compress_gray.cpp/.h   Deleted in Task 10, after being copied to tests/legacy/
 openCV_test.pro                                                     Replaced by CMake
 openCV_test.pro.user, openCV_test.pro.user.f90b369                 IDE state
 ```
+
+The legacy sources are **copied** to `tests/legacy/` in Task 5 and deleted
+from the repository root in Task 10, once the GUI no longer needs them. The
+copies stay as the oracle for the golden regression test.
 
 ---
 
@@ -1301,7 +1305,21 @@ Create `include/blockcodec/blockcodec.hpp`:
 #include "blockcodec/segment.hpp"
 ```
 
-- [ ] **Step 4: Write the channel-safe pixel accessor**
+- [ ] **Step 4: Copy the legacy sources under `tests/legacy/`**
+
+The GUI still uses `Compress_gray`, and it is not migrated until Task 10, so
+the originals must stay where they are. Copy them instead of moving them:
+
+```bash
+mkdir -p tests/legacy
+cp Compress_gray.h Compress_gray.cpp Bits.h Bits.cpp Block.h Block.cpp RBlock.h RBlock.cpp tests/legacy/
+```
+
+The copies keep the original content, including the `windows.h` include, and
+are only compiled on Windows by a test-only target. The originals are deleted
+in Task 10, once the GUI no longer needs them.
+
+- [ ] **Step 5: Write the channel-safe pixel accessor**
 
 Create `src/core/pixel.hpp`:
 
@@ -1330,7 +1348,7 @@ inline void set_sample_at(cv::Mat& image, int row, int column, int c, int value)
 }  // namespace blockcodec
 ```
 
-- [ ] **Step 5: Write the block interface**
+- [ ] **Step 6: Write the block interface**
 
 Create `src/core/block.hpp`:
 
@@ -1400,7 +1418,7 @@ void Block::mark(bool* marked, int rows, int cols) const {
 }  // namespace blockcodec
 ```
 
-- [ ] **Step 6: Write the interpolating block**
+- [ ] **Step 7: Write the interpolating block**
 
 Create `src/core/rblock.hpp`:
 
@@ -1547,7 +1565,7 @@ void RBlock::restore(cv::Mat& image) const {
 }  // namespace blockcodec
 ```
 
-- [ ] **Step 7: Write the codec driver**
+- [ ] **Step 8: Write the codec driver**
 
 Create `src/core/codec.cpp`:
 
@@ -1826,7 +1844,7 @@ namespace, so the library compiles before Task 7 adds the public
 `metrics.hpp`. In Task 7 the public header is added and the definitions
 move into `src/core/metrics.cpp` unchanged.
 
-- [ ] **Step 8: Write the metric helpers**
+- [ ] **Step 9: Write the metric helpers**
 
 `codec.cpp` calls `bpp` and `compression_ratio`. Create them now, so that the
 library compiles. Task 7 adds the public header for them.
@@ -1885,9 +1903,43 @@ double compression_ratio(std::size_t bits, int rows, int cols, int channels,
 }  // namespace blockcodec
 ```
 
-- [ ] **Step 9: Wire the library into CMake**
+- [ ] **Step 10: Wire the library into CMake**
 
-Replace the `opencv_codec` library block in `CMakeLists.txt` with:
+The existing `opencv_codec` library, the three legacy test tools and the GUI
+all sit on top of `Compress_gray`. They are not removed yet, because the GUI
+is migrated in Task 10. Instead, `opencv_codec` is **renamed in place** to
+`legacy_codec`, its sources are pointed at the copies under `tests/legacy/`,
+and the new `blockcodec` library is added beside it.
+
+Replace the `opencv_codec` block in `CMakeLists.txt` with:
+
+```cmake
+# The legacy implementation. It is kept only for the GUI, which is migrated
+# in a later task, and for the golden regression test, which uses it as an
+# oracle. It is removed once both are gone.
+add_library(legacy_codec STATIC
+    tests/legacy/Compress_gray.cpp
+    tests/legacy/Bits.cpp
+    tests/legacy/Block.cpp
+    tests/legacy/RBlock.cpp
+)
+target_include_directories(legacy_codec PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tests/legacy)
+target_link_libraries(legacy_codec PUBLIC ${OpenCV_LIBS})
+set_target_properties(legacy_codec PROPERTIES POSITION_INDEPENDENT_CODE ON)
+```
+
+Then change the three places that link the old library name to link
+`legacy_codec` instead:
+
+```cmake
+    target_link_libraries(codec_selftest PRIVATE legacy_codec)
+    target_link_libraries(codec_vector_gen PRIVATE legacy_codec)
+    target_link_libraries(bench_sweep PRIVATE legacy_codec)
+```
+
+And change the GUI's link line from `opencv_codec` to `legacy_codec`.
+
+Finally, add the new library:
 
 ```cmake
 add_library(blockcodec STATIC
@@ -1911,15 +1963,16 @@ set_target_properties(blockcodec PROPERTIES POSITION_INDEPENDENT_CODE ON)
 add_library(blockcodec::blockcodec ALIAS blockcodec)
 ```
 
-- [ ] **Step 10: Run the tests**
+
+- [ ] **Step 11: Run the tests**
 
 Run the test script. Expected: `test_codec` reports 8 passing tests, and the
 existing `codec_selftest` still passes.
 
-- [ ] **Step 11: Commit**
+- [ ] **Step 12: Commit**
 
 ```bash
-git add include/blockcodec src/core src/format.cpp tests/unit/test_codec.cpp CMakeLists.txt
+git add include/blockcodec src/core src/format.cpp tests/legacy tests/unit/test_codec.cpp CMakeLists.txt
 git commit -m "feat: add the blockcodec core with colour support"
 ```
 
@@ -1942,15 +1995,20 @@ the safety net for the whole rewrite.
 - Consumes: `blockcodec::Codec`, `blockcodec::psnr` (Task 5).
 - Produces: a test-only target `legacy_codec` that is never installed.
 
-- [ ] **Step 1: Move the legacy sources under `tests/legacy/`**
+- [ ] **Step 1: Verify the legacy copies**
+
+The copies of the legacy sources were made in Task 5 Step 4. Confirm they
+are present:
 
 ```bash
-mkdir -p tests/legacy
-git mv Compress_gray.h Compress_gray.cpp Bits.h Bits.cpp Block.h Block.cpp RBlock.h RBlock.cpp tests/legacy/
+ls tests/legacy/
 ```
 
-The legacy sources keep their original content, including the `windows.h`
-include. They are only compiled on Windows, by a test-only target.
+Expected: `Bits.cpp`, `Bits.h`, `Block.cpp`, `Block.h`, `Compress_gray.cpp`,
+`Compress_gray.h`, `RBlock.cpp` and `RBlock.h`.
+
+They are **copies, not moves**. The GUI still uses `Compress_gray` and is
+not migrated until Task 10, so the originals must stay where they are.
 
 - [ ] **Step 2: Write the failing test**
 
@@ -3018,7 +3076,20 @@ endif()
 Run the build script with `-DBLOCKCODEC_BUILD_GUI=ON`. Expected: exit code 0
 and `blockcodec_gui.exe` is produced.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Remove the legacy sources from the repository root**
+
+The copies under `tests/legacy/` are the oracle the golden test uses, and
+they stay. The originals at the repository root are no longer referenced by
+anything and are deleted:
+
+```bash
+git rm Compress_gray.h Compress_gray.cpp Bits.h Bits.cpp Block.h Block.cpp RBlock.h RBlock.cpp
+```
+
+The `legacy_codec` library stays in `CMakeLists.txt`, because the golden
+test still links against it.
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add apps/qt CMakeLists.txt
@@ -3194,7 +3265,7 @@ jobs:
         run: >
           cmake -S . -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Release
-          -DBUILD_GUI_APP=OFF
+          -DBLOCKCODEC_BUILD_GUI=OFF
           -DBUILD_TESTING=ON
 
       - name: Build
@@ -3219,7 +3290,7 @@ jobs:
         run: >
           cmake -S . -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Debug
-          -DBUILD_GUI_APP=OFF
+          -DBLOCKCODEC_BUILD_GUI=OFF
           -DBUILD_TESTING=ON
           -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
           -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
@@ -3242,24 +3313,23 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential cmake ninja-build libopencv-dev \
-            qtbase5-dev qtbase5-dev-tools qttools5-dev
+            qt6-base-dev qt6-base-dev-tools qt6-tools-dev
 
       - name: Configure
         run: >
           cmake -S . -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Release
-          -DBUILD_GUI_APP=ON
+          -DBLOCKCODEC_BUILD_GUI=ON
 
       - name: Build
         run: cmake --build build --parallel
 ```
 
-**Note:** the option names in this file must match the ones the top-level
-`CMakeLists.txt` actually uses. The existing file uses `BUILD_GUI_APP` and
-`BUILD_TESTING`; Task 10 introduces `BLOCKCODEC_BUILD_GUI`. Use
-`BLOCKCODEC_BUILD_GUI` everywhere and update the workflow accordingly, and
-make sure the top-level `CMakeLists.txt` accepts both spellings during the
-transition:
+**Note on the option names:** the top-level `CMakeLists.txt` uses
+`BUILD_TESTING` and, from Task 10 on, `BLOCKCODEC_BUILD_GUI`. The workflow
+above uses the same names throughout, so no alias is needed. If the old
+`BUILD_GUI_APP` spelling has to keep working during the transition, add this
+to the top-level `CMakeLists.txt`:
 
 ```cmake
 option(BLOCKCODEC_BUILD_GUI "Build the Qt GUI example" ON)
@@ -3362,7 +3432,43 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 - The decoder rejects malformed containers instead of trusting them.
 ```
 
-- [ ] **Step 5: Check that no Chinese comments remain in the source**
+- [ ] **Step 5: Add the landscape greyscale test image**
+
+The landscape greyscale case is only caught if a test image is wider than it
+is tall. The existing images are all square, so the case is never reached.
+Add one:
+
+Generate it with OpenCV rather than by hand, and confirm the dimensions:
+
+```bash
+cat > /tmp/make_landscape.cpp <<'EOF'
+#include <opencv2/imgcodecs.hpp>
+int main() {
+    cv::Mat image(128, 256, CV_8UC1, cv::Scalar(120));
+    return cv::imwrite("images/landscape_grey.bmp", image) ? 0 : 1;
+}
+EOF
+```
+
+Compile and run it with the same toolchain as the build:
+
+```bat
+call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+cl /nologo /EHsc /std:c++17 /I"C:\Program Files\opencv\build\include" ^
+   /Fo:%TEMP%\ /Fe:%TEMP%\make_landscape.exe %TEMP%\make_landscape.cpp ^
+   /link /LIBPATH:"C:\Program Files\opencv\build\x64\vc16\lib" opencv_world4100.lib
+```
+
+```bash
+cp "$TEMP/make_landscape.exe" ./make_landscape.exe
+./make_landscape.exe
+rm -f make_landscape.exe
+```
+
+Expected: `images/landscape_grey.bmp` is created, 256 columns by 128 rows, one
+channel.
+
+- [ ] **Step 6: Check that no Chinese comments remain in the source**
 
 Run:
 
@@ -3373,10 +3479,10 @@ grep -rn -P '[\x{4e00}-\x{9fff}]' src/ include/ apps/ bench/ tests/ --include=*.
 Expected: no output. Every comment and every message in the library, the
 applications and the tests is in English.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add CHANGELOG.md README.md
+git add CHANGELOG.md README.md images/
 git commit -m "docs: record the release notes and the measured benchmark table"
 ```
 
