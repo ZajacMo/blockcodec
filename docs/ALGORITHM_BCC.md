@@ -470,6 +470,19 @@ They are versioned, and regenerating them is only done deliberately: a
 change in the encoder changes the expected output, and that has to be
 noticed rather than absorbed.
 
+**The vectors do not depend on the compiler that produced them.** The
+encoder's arithmetic is deterministic, and the containers regenerate
+byte for byte under GCC with `-ffp-contract=fast`, with
+`-ffp-contract=off`, with `-O0`, with `-march=native`, and under MSVC.
+The reference images do as well.
+
+This matters because the containers are handed to people who write their
+own decoders: a vector that differed between compilers would make the
+reference unreliable. It is checked by the test suite, which compresses
+each source image again and compares the result with the container in the
+repository, and by the workflow, which regenerates the vectors and asks git
+whether anything changed.
+
 ---
 
 ## 9. The legacy format
