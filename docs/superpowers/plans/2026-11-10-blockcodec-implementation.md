@@ -286,6 +286,17 @@ cp /f/Projects/01_courses/cpp/VS_C++Project/test_openCV/*.cpp \
 Expected: the legacy console implementation is present for reference. It is not
 compiled by the top-level CMake.
 
+**Use this copy, not the repository's own `Compress_gray`.** The VS copy has
+been converted to UTF-8 with English comments, and it fixes a double free:
+`Bits::loadedInfo` was never initialised, so the destructor freed an
+uninitialised pointer. The two versions differ only in comments and in that
+fix — the block algorithm is byte for byte identical, which was verified by
+comparing the sources with the comments stripped. The VS copy is therefore
+the better source for the oracle, and it is free of the crash.
+
+The repository's own `Compress_gray` is the GBK original with the same crash.
+It stays where it is until Task 10, and is deleted then.
+
 - [ ] **Step 3: Copy the CLion prototype into `apps/prototype/`, without its build output**
 
 ```bash
@@ -1346,12 +1357,26 @@ the originals must stay where they are. Copy them instead of moving them:
 
 ```bash
 mkdir -p tests/legacy
-cp Compress_gray.h Compress_gray.cpp Bits.h Bits.cpp Block.h Block.cpp RBlock.h RBlock.cpp tests/legacy/
+cp /f/Projects/01_courses/cpp/VS_C++Project/test_openCV/Compress_gray.h \
+   /f/Projects/01_courses/cpp/VS_C++Project/test_openCV/Compress_gray.cpp \
+   /f/Projects/01_courses/cpp/VS_C++Project/test_openCV/Bits.h \
+   /f/Projects/01_courses/cpp/VS_C++Project/test_openCV/Bits.cpp \
+   /f/Projects/01_courses/cpp/VS_C++Project/test_openCV/Block.h \
+   /f/Projects/01_courses/cpp/VS_C++Project/test_openCV/Block.cpp \
+   /f/Projects/01_courses/cpp/VS_C++Project/test_openCV/RBlock.h \
+   /f/Projects/01_courses/cpp/VS_C++Project/test_openCV/RBlock.cpp \
+   tests/legacy/
 ```
 
-The copies keep the original content, including the `windows.h` include, and
-are only compiled on Windows by a test-only target. The originals are deleted
-in Task 10, once the GUI no longer needs them.
+These copies come from the VS repository rather than from this one, because
+that version has been converted to UTF-8 with English comments and has the
+double free in `Bits::loadedInfo` fixed. The two versions differ only in
+comments and in that fix; the block algorithm is identical, which was
+verified by comparing the sources with the comments stripped.
+
+The copies are only compiled on Windows by a test-only target, because they
+include `windows.h`. The originals in this repository are deleted in Task 10,
+once the GUI no longer needs them.
 
 - [ ] **Step 5: Write the channel-safe pixel accessor**
 
