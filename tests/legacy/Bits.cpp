@@ -1,6 +1,6 @@
 #include "Bits.h"
 #include <fstream>
-#include <string.h>
+#include <cstring>
 #include <cmath>
 #include <stdexcept>
 

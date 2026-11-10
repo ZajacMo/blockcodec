@@ -8,28 +8,33 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-test:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: Windows (MSVC 2022, Qt 6, OpenCV 4)
+          - name: Ubuntu (GCC)
+            os: ubuntu-22.04
+            compiler: gcc
+
+          - name: Ubuntu (Clang)
+            os: ubuntu-22.04
+            compiler: clang
+
+          - name: Windows (MSVC 2022)
             os: windows-2022
             qt: '6.6.2'
             qt_arch: msvc2019_64
             vcpkg_triplet: x64-windows
             vcpkg_opencv: opencv4
 
-          - name: Ubuntu (GCC, Qt 6, OpenCV 4)
-            os: ubuntu-22.04
-
     steps:
       - uses: actions/checkout@v4
 
       # ------------------------------------------------------------------
-      # Linux: install Qt and OpenCV from the distribution packages
+      # Linux: install the compiler and OpenCV from the distribution
       # ------------------------------------------------------------------
       - name: Install dependencies (Ubuntu)
         if: runner.os == 'Linux'
@@ -37,17 +42,23 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential \
+            clang \
             cmake \
-            qtbase5-dev \
-            qtbase5-dev-tools \
+            ninja-build \
             libopencv-dev
+
+      - name: Select the compiler (Ubuntu)
+        if: runner.os == 'Linux' && matrix.compiler == 'clang'
+        run: |
+          echo "CC=clang" >> "$GITHUB_ENV"
+          echo "CXX=clang++" >> "$GITHUB_ENV"
 
       - name: Configure (Ubuntu)
         if: runner.os == 'Linux'
         run: |
-          cmake -S . -B build \
+          cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DBLOCKCODEC_BUILD_GUI=ON \
+            -DBLOCKCODEC_BUILD_GUI=OFF \
             -DBUILD_TESTING=ON
 
       - name: Build (Ubuntu)
@@ -83,13 +94,86 @@ jobs:
           cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
             -DCMAKE_PREFIX_PATH="${{ env.Qt6_DIR }}" `
             -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake `
-            -DBLOCKCODEC_BUILD_GUI=ON `
+            -DBLOCKCODEC_BUILD_GUI=OFF `
             -DBUILD_TESTING=ON
 
       - name: Build (Windows)
         if: runner.os == 'Windows'
         run: cmake --build build --config Release --parallel 2
 
+      # The golden regression test compares against the legacy implementation,
+      # which is the Windows path that compiles it, so this job is the one
+      # that has to pass.
       - name: Run tests (Windows)
         if: runner.os == 'Windows'
         run: ctest --test-dir build -C Release --output-on-failure
+
+  sanitizers:
+    name: Sanitizers (ASan, UBSan)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            libopencv-dev
+
+      # The sanitizers are here to catch the classes of defect the codec is
+      # careful about: a buffer that overflowed, a read of uninitialised
+      # memory, and a shift past the width of an integer.
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DBLOCKCODEC_BUILD_GUI=OFF \
+            -DBUILD_TESTING=ON \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+
+      - name: Build
+        run: cmake --build build --parallel 2
+
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
+
+  gui:
+    name: Qt GUI
+    runs-on: ubuntu-22.04
+
+    # The GUI is an example application. A failure there is visible but it
+    # must not fail the whole pipeline.
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            libopencv-dev \
+            qt6-base-dev \
+            qt6-base-dev-tools \
+            qt6-tools-dev
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBLOCKCODEC_BUILD_GUI=ON \
+            -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build --parallel 2
+
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
