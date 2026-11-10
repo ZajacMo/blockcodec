@@ -74,6 +74,10 @@ std::vector<std::uint8_t> Codec::compress(const cv::Mat& source,
                                            CompressResult* result) {
     const double started = now_seconds();
 
+    // The blocks of the previous operation are cleared up front, so a
+    // rejected image does not leave the extents of an earlier one behind.
+    blocks_.clear();
+
     if (source.empty()) {
         throw std::runtime_error("blockcodec: cannot compress an empty image");
     }
@@ -177,6 +181,10 @@ cv::Mat Codec::decompress(const std::vector<std::uint8_t>& container,
                            CompressResult* result) {
     const double started = now_seconds();
 
+    // As in compress(), the extents of the previous operation are cleared
+    // up front, so a rejected container does not leave them behind.
+    blocks_.clear();
+
     std::vector<std::uint8_t> payload;
     const ContainerHeader header = read_container(container, payload);
 
@@ -206,6 +214,8 @@ cv::Mat Codec::decompress(const std::vector<std::uint8_t>& container,
 
     cv::Mat image(rows, cols, CV_8UC(channels), cv::Scalar(0));
 
+    blocks_.reserve(header.block_count);
+
     for (std::uint32_t i = 0; i < header.block_count; ++i) {
         const int start_row = static_cast<int>(reader.read(row_bits));
         const int start_column = static_cast<int>(reader.read(column_bits));
@@ -227,6 +237,8 @@ cv::Mat Codec::decompress(const std::vector<std::uint8_t>& container,
 
         RBlock block(lt, rb, corners);
         block.restore(image);
+
+        blocks_.emplace_back(lt.x, lt.y, width, height);
     }
 
     // The payload must hold exactly the declared number of blocks. The

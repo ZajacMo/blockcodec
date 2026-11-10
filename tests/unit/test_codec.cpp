@@ -196,3 +196,42 @@ TEST(Segment, DrawsTheOverlayOnACopy) {
     codec.compress(source);
     EXPECT_EQ(cv::countNonZero(source != untouched), 0);
 }
+
+TEST(Codec, ReportsTheBlockExtentsOfADecodedContainer) {
+    // The overlay is meant to be buildable from a container the codec did
+    // not compress itself, so the decoder has to report the extents too.
+    const cv::Mat source = make_gradient(64, 64, 1);
+
+    Codec encoder;
+    const std::vector<std::uint8_t> container = encoder.compress(source);
+
+    Codec decoder;
+    decoder.decompress(container);
+
+    ASSERT_EQ(decoder.blocks().size(), encoder.blocks().size());
+    for (std::size_t i = 0; i < decoder.blocks().size(); ++i) {
+        EXPECT_EQ(decoder.blocks()[i].x, encoder.blocks()[i].x);
+        EXPECT_EQ(decoder.blocks()[i].y, encoder.blocks()[i].y);
+        EXPECT_EQ(decoder.blocks()[i].width, encoder.blocks()[i].width);
+        EXPECT_EQ(decoder.blocks()[i].height, encoder.blocks()[i].height);
+    }
+}
+
+TEST(Codec, ClearsTheBlockExtentsAfterAFailedOperation) {
+    // A rejected image must not leave the extents of an earlier operation
+    // behind, because they would describe a picture that is not the one the
+    // caller last asked about.
+    Codec codec;
+    codec.compress(make_gradient(64, 64, 1));
+    ASSERT_FALSE(codec.blocks().empty());
+
+    EXPECT_THROW(codec.compress(cv::Mat()), std::runtime_error);
+    EXPECT_TRUE(codec.blocks().empty());
+
+    codec.compress(make_gradient(64, 64, 1));
+    ASSERT_FALSE(codec.blocks().empty());
+
+    EXPECT_THROW(codec.decompress(std::vector<std::uint8_t>{1, 2, 3, 4, 5}),
+                 std::runtime_error);
+    EXPECT_TRUE(codec.blocks().empty());
+}
