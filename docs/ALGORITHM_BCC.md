@@ -215,6 +215,14 @@ Two properties of this expression matter:
   rounds once instead of twice, which can change the value after the
   truncation.
 
+The order of the two truncations is part of the format, and it is not the
+same as interpolating all four corners first and truncating once at the end.
+An implementation that computes the four corner interpolations in full
+precision, combines them, and truncates only the final result does **not**
+produce the same value, and therefore does not choose the same blocks. The
+truncation happens after the vertical interpolation and again after the
+horizontal one, in that order.
+
 The second point needs checking rather than assuming. It is invisible in
 most expressions and would be invisible here too, if the truncation did not
 make it visible.
@@ -289,8 +297,31 @@ conditions are therefore checked when writing.
 
 ## 8. Verifying an implementation
 
-The reference vector in `tests/vectors/` is a small synthetic image, its
-container, and the image that the container decodes to.
+The reference vectors in `tests/vectors/` are what an independent
+implementation is checked against. Each vector is three files:
+
+| File | Purpose |
+|------|---------|
+| `gradient_16x16_source.bmp` | the synthetic source image, 16x16, one channel |
+| `gradient_16x16.bcc` | the container the encoder produces from it |
+| `gradient_16x16_reference.bmp` | the image the container decodes to |
+
+And a second, colour one:
+
+| File | Purpose |
+|------|---------|
+| `gradient_16x16_colour_source.bmp` | the same picture in three channels, 16x16 |
+| `gradient_16x16_colour.bcc` | its container |
+| `gradient_16x16_colour_reference.bmp` | the image it decodes to |
+
+The source is deterministic: a diagonal gradient (`value = x * 8 + y * 4`)
+with a constant `200` patch in the 4x4 top-left corner, which forces the
+encoder to emit both rectangular blocks and isolated pixels. The colour
+vector holds the same picture with a different value in each channel, so
+that a decoder which reads the corner samples in the wrong order produces a
+different image.
+
+Both vectors use `sigma = 10`.
 
 A conforming implementation must decode the container to **exactly** the
 pixels of the reference image. Not approximately: pixel for pixel, with no
@@ -301,6 +332,16 @@ The acceptance criterion is a single one. Metrics such as the bits-per-pixel
 or the compression ratio are **not** acceptance criteria, because a
 verification tool and the implementation it checks could compute them the
 same way and agree with each other while both being wrong.
+
+The vectors are regenerated with:
+
+```
+blockcodec_vector_gen tests/vectors
+```
+
+They are versioned, and regenerating them is only done deliberately: a
+change in the encoder changes the expected output, and that has to be
+noticed rather than absorbed.
 
 ---
 
