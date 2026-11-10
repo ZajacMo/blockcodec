@@ -33,23 +33,23 @@ std::uint32_t read_u32(const std::uint8_t* p) {
 // count or an implausible size is not conforming.
 void validate_header(const ContainerHeader& header) {
     if (header.rows == 0 || header.cols == 0) {
-        throw std::runtime_error("blockcodec: the container declares an empty image");
+        throw std::runtime_error("the container declares an empty image");
     }
     if (header.channels < 1 || header.channels > 4) {
         throw std::runtime_error(
-            "blockcodec: the container declares an unsupported channel count");
+            "the container declares an unsupported channel count");
     }
     if (header.depth_bits != 8 && header.depth_bits != 16 &&
         header.depth_bits != 32) {
         throw std::runtime_error(
-            "blockcodec: the container declares an unsupported colour depth");
+            "the container declares an unsupported colour depth");
     }
 
     const std::uint64_t pixels = static_cast<std::uint64_t>(header.rows) *
                                  static_cast<std::uint64_t>(header.cols);
     if (pixels > kMaxPixels) {
         throw std::runtime_error(
-            "blockcodec: the container declares an implausible image size");
+            "the container declares an implausible image size");
     }
 }
 
@@ -83,13 +83,13 @@ std::vector<std::uint8_t> write_container(const ContainerHeader& header,
 ContainerHeader read_container(const std::vector<std::uint8_t>& data,
                                 std::vector<std::uint8_t>& payload) {
     if (data.size() < kHeaderSize) {
-        throw std::runtime_error("blockcodec: the container is truncated");
+        throw std::runtime_error("the container is truncated");
     }
     if (std::memcmp(data.data(), kMagic, sizeof(kMagic)) != 0) {
-        throw std::runtime_error("blockcodec: the container has a bad magic number");
+        throw std::runtime_error("the container has a bad magic number");
     }
     if (data[4] != kFormatVersion) {
-        throw std::runtime_error("blockcodec: unsupported container version");
+        throw std::runtime_error("unsupported container version");
     }
 
     ContainerHeader header;

@@ -76,13 +76,13 @@ std::vector<std::uint8_t> Codec::compress(const cv::Mat& source,
 
 
     if (source.empty()) {
-        throw std::runtime_error("blockcodec: cannot compress an empty image");
+        throw std::runtime_error("cannot compress an empty image");
     }
     if (source.depth() != CV_8U) {
-        throw std::runtime_error("blockcodec: only 8-bit images are supported");
+        throw std::runtime_error("only 8-bit images are supported");
     }
     if (options_.sigma < 0) {
-        throw std::runtime_error("blockcodec: the tolerance must not be negative");
+        throw std::runtime_error("the tolerance must not be negative");
     }
 
     const int rows = source.rows;
@@ -205,7 +205,7 @@ cv::Mat Codec::decompress(const std::vector<std::uint8_t>& container,
 
     if (reader.bit_count() < required_bits) {
         throw std::runtime_error(
-            "blockcodec: the payload is shorter than the declared blocks require");
+            "the payload is shorter than the declared blocks require");
     }
 
     cv::Mat image(rows, cols, CV_8UC(channels), cv::Scalar(0));
@@ -221,7 +221,7 @@ cv::Mat Codec::decompress(const std::vector<std::uint8_t>& container,
 
         if (start_row >= rows || start_column >= cols ||
             start_row + height > rows || start_column + width > cols) {
-            throw std::runtime_error("blockcodec: a block lies outside the image");
+            throw std::runtime_error("a block lies outside the image");
         }
 
         const cv::Point lt(start_column, start_row);
@@ -243,7 +243,7 @@ cv::Mat Codec::decompress(const std::vector<std::uint8_t>& container,
     // means the file is corrupt.
     if (reader.bit_position() != required_bits) {
         throw std::runtime_error(
-            "blockcodec: the payload does not hold the declared number of blocks");
+            "the payload does not hold the declared number of blocks");
     }
 
     // The bits between the last block and the end of its byte are padding
@@ -255,7 +255,7 @@ cv::Mat Codec::decompress(const std::vector<std::uint8_t>& container,
     while (reader.bit_position() < required_bits + (8 - required_bits % 8) % 8) {
         if (reader.read_bit()) {
             throw std::runtime_error(
-                "blockcodec: the padding bits after the last block are not zero");
+                "the padding bits after the last block are not zero");
         }
     }
 
@@ -272,7 +272,7 @@ cv::Mat Codec::decompress(const std::vector<std::uint8_t>& container,
 cv::Mat Codec::decompress(const std::string& path, CompressResult* result) {
     std::ifstream in(path, std::ios::binary);
     if (!in) {
-        throw std::runtime_error("blockcodec: cannot open '" + path + "' for reading");
+        throw std::runtime_error("cannot open '" + path + "' for reading");
     }
     const std::vector<std::uint8_t> container((std::istreambuf_iterator<char>(in)),
                                               std::istreambuf_iterator<char>());

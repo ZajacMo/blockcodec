@@ -30,6 +30,15 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(googletest)
 
+# CLI11 parses the command line of the blockcodec executable.
+FetchContent_Declare(
+    CLI11
+    GIT_REPOSITORY https://github.com/CLIUtils/CLI11.git
+    GIT_TAG v2.4.2
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(CLI11)
+
 # ---------------------------------------------------------------------------
 # blockcodec - the reusable codec library
 # ---------------------------------------------------------------------------
@@ -50,6 +59,17 @@ target_include_directories(blockcodec
 target_link_libraries(blockcodec PUBLIC ${OpenCV_LIBS})
 set_target_properties(blockcodec PROPERTIES POSITION_INDEPENDENT_CODE ON)
 add_library(blockcodec::blockcodec ALIAS blockcodec)
+
+# ---------------------------------------------------------------------------
+# blockcodec_cli - the command line interface
+# ---------------------------------------------------------------------------
+add_executable(blockcodec_cli
+    apps/cli/main.cpp
+    apps/cli/commands.cpp
+)
+set_target_properties(blockcodec_cli PROPERTIES OUTPUT_NAME blockcodec)
+target_include_directories(blockcodec_cli PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/apps)
+target_link_libraries(blockcodec_cli PRIVATE blockcodec CLI11::CLI11)
 
 # ---------------------------------------------------------------------------
 # legacy_codec - the previous implementation, kept for the GUI and as the
@@ -145,6 +165,17 @@ if(BUILD_TESTING)
     target_link_libraries(test_format PRIVATE blockcodec gtest_main)
     add_test(NAME test_format COMMAND test_format
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # The command line test drives the executable, so it is registered
+    # after the target it runs.
+    add_executable(test_cli tests/cli/test_cli.cpp)
+    add_dependencies(test_cli blockcodec_cli)
+    # The path of the executable is passed at run time, because it is only
+    # known once the build has finished.
+    add_test(NAME test_cli COMMAND test_cli
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(test_cli PROPERTIES
+        ENVIRONMENT "BLOCKCODEC_CLI=$<TARGET_FILE:blockcodec_cli>")
 
     add_executable(test_codec tests/unit/test_codec.cpp)
     target_link_libraries(test_codec PRIVATE blockcodec gtest_main)
