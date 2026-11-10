@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(OpenCV-Image-Processing-and-Compression-Tool
-        VERSION 1.0
-        DESCRIPTION "Qt + OpenCV image compression tool with a reusable block codec library"
+project(blockcodec
+        VERSION 0.1.0
+        DESCRIPTION "A block based, interpolating image codec with an exactly specified container format"
         LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -21,7 +21,12 @@ find_package(OpenCV REQUIRED)
 
 # GoogleTest drives the unit tests. It is fetched rather than vendored so
 # that the dependency stays pinned to a known-good upstream release.
+#
+# INSTALL_GTEST is turned off, because a fetched dependency that installs
+# itself would put its headers and libraries into the install prefix of this
+# project, which is supposed to contain blockcodec and nothing else.
 include(FetchContent)
+set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
     googletest
     GIT_REPOSITORY https://github.com/google/googletest.git
@@ -30,7 +35,10 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(googletest)
 
-# CLI11 parses the command line of the blockcodec executable.
+# CLI11 parses the command line of the blockcodec executable. It is a build
+# time dependency of the executable only, so it is not installed.
+include(FetchContent)
+set(CLI11_INSTALL OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
     CLI11
     GIT_REPOSITORY https://github.com/CLIUtils/CLI11.git
@@ -59,6 +67,50 @@ target_include_directories(blockcodec
 target_link_libraries(blockcodec PUBLIC ${OpenCV_LIBS})
 set_target_properties(blockcodec PROPERTIES POSITION_INDEPENDENT_CODE ON)
 add_library(blockcodec::blockcodec ALIAS blockcodec)
+
+# ---------------------------------------------------------------------------
+# Installation of the library and of its package description
+#
+# The installed package is found by a downstream project with
+# find_package(blockcodec) and used through the exported target
+# blockcodec::blockcodec.
+# ---------------------------------------------------------------------------
+include(GNUInstallDirs)
+
+install(TARGETS blockcodec
+        EXPORT blockcodecTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(DIRECTORY include/blockcodec
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        FILES_MATCHING PATTERN "*.hpp"
+)
+
+install(EXPORT blockcodecTargets
+        FILE blockcodecTargets.cmake
+        NAMESPACE blockcodec::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/blockcodec
+)
+
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/blockcodecConfigVersion.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/blockcodecConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/blockcodecConfig.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/blockcodec
+)
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/blockcodecConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/blockcodecConfigVersion.cmake"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/blockcodec
+)
 
 # ---------------------------------------------------------------------------
 # blockcodec_cli - the command line interface
@@ -183,6 +235,21 @@ if(BUILD_TESTING)
     add_executable(test_format tests/unit/test_format.cpp)
     target_link_libraries(test_format PRIVATE blockcodec gtest_main)
     add_test(NAME test_format COMMAND test_format
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Regenerates the reference vectors. Not part of the test run, because
+    # the vectors are versioned and must stay stable.
+    add_executable(blockcodec_vector_gen tests/vector/blockcodec_vector_gen.cpp)
+    target_link_libraries(blockcodec_vector_gen PRIVATE blockcodec)
+
+    # Checks the reference vectors. They are what an independent
+    # implementation is verified against, so they must decode to exactly the
+    # same pixels on every implementation.
+    add_executable(test_vector tests/vector/test_vector.cpp)
+    target_link_libraries(test_vector PRIVATE blockcodec gtest_main)
+    target_compile_definitions(test_vector PRIVATE
+        BLOCKCODEC_VECTOR_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/vectors")
+    add_test(NAME test_vector COMMAND test_vector
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
     # The command line test drives the executable, so it is registered

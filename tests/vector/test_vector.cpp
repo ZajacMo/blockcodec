@@ -1,0 +1,85 @@
+// Checks the reference vectors of the .bcc container.
+//
+// A vector is a container and the image it decodes to. The test decodes the
+// container and compares it with the reference image pixel for pixel, with
+// no tolerance.
+//
+// The vectors are what an independent implementation is checked against, so
+// they must decode to exactly the same pixels on every implementation. The
+// test also writes the decoded image next to the reference, so that a
+// mismatch can be looked at rather than only counted.
+
+#include "blockcodec/codec.hpp"
+
+#include <gtest/gtest.h>
+
+#include <opencv2/imgcodecs.hpp>
+
+#include <string>
+#include <vector>
+
+namespace {
+
+std::string vector_directory() {
+#ifdef BLOCKCODEC_VECTOR_DIR
+    return BLOCKCODEC_VECTOR_DIR;
+#else
+    return "tests/vectors";
+#endif
+}
+
+// Checks one vector.
+void check_vector(const std::string& name) {
+    const std::string dir = vector_directory();
+    const std::string containerPath = dir + "/" + name + ".bcc";
+    const std::string referencePath = dir + "/" + name + "_reference.bmp";
+
+    const cv::Mat reference = cv::imread(referencePath, cv::IMREAD_UNCHANGED);
+    ASSERT_FALSE(reference.empty()) << "cannot read " << referencePath;
+
+    blockcodec::Codec codec;
+    blockcodec::CompressResult result;
+    const cv::Mat decoded = codec.decompress(containerPath, &result);
+
+    ASSERT_EQ(decoded.rows, reference.rows) << name;
+    ASSERT_EQ(decoded.cols, reference.cols) << name;
+    ASSERT_EQ(decoded.channels(), reference.channels()) << name;
+
+    // The pixels must be identical, not merely close.
+    cv::Mat difference;
+    cv::absdiff(decoded, reference, difference);
+    double largest = 0.0;
+    cv::minMaxLoc(difference.reshape(1), nullptr, &largest);
+
+    EXPECT_EQ(largest, 0.0)
+        << name << ": the decoded image differs from the reference";
+}
+
+}  // namespace
+
+TEST(Vector, DecodesTheGreyscaleVectorExactly) {
+    check_vector("gradient_16x16");
+}
+
+TEST(Vector, DecodesTheColourVectorExactly) {
+    // The colour vector exists because the corner samples are stored per
+    // channel. A decoder that reads them in the wrong order produces a
+    // different image, and would still pass on the greyscale vector.
+    check_vector("gradient_16x16_colour");
+}
+
+TEST(Vector, TheColourVectorIsNotDecodableAsGreyscale) {
+    // The two vectors hold different pictures, so a decoder that ignored
+    // the channel count would produce the wrong result.
+    const std::string dir = vector_directory();
+
+    const cv::Mat greyReference =
+        cv::imread(dir + "/gradient_16x16_reference.bmp", cv::IMREAD_UNCHANGED);
+    const cv::Mat colourReference =
+        cv::imread(dir + "/gradient_16x16_colour_reference.bmp", cv::IMREAD_UNCHANGED);
+
+    ASSERT_FALSE(greyReference.empty());
+    ASSERT_FALSE(colourReference.empty());
+
+    EXPECT_NE(greyReference.channels(), colourReference.channels());
+}
