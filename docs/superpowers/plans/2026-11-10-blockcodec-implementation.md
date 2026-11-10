@@ -252,7 +252,7 @@ lost, and brings the CLion prototype in as a tracked, non-built directory.
 
 **Files:**
 - Modify: `git remote set-url origin`
-- Create: `legacy/vs-console/` (the contents of `cpp/VS_C++Project/test_openCV`)
+- Create: `legacy/vs-console/` (the contents of `cpp/VS_C++Project/OpenCV-Image-Processing-and-Compression-Tool-Console`)
 - Create: `apps/prototype/Header.h`, `apps/prototype/Header.cpp`, `apps/prototype/PROTOTYPE.md`, `apps/prototype/CMakeLists.txt`
 - Modify: `.gitignore`
 
@@ -276,10 +276,10 @@ Expected: the hash of `main`, proving the renamed remote resolves.
 
 ```bash
 mkdir -p legacy/vs-console
-cp /f/Projects/01_courses/cpp/VS_C++Project/test_openCV/*.cpp \
-   /f/Projects/01_courses/cpp/VS_C++Project/test_openCV/*.h \
-   /f/Projects/01_courses/cpp/VS_C++Project/test_openCV/*.sln \
-   /f/Projects/01_courses/cpp/VS_C++Project/test_openCV/*.vcxproj* \
+cp /f/Projects/01_courses/cpp/VS_C++Project/OpenCV-Image-Processing-and-Compression-Tool-Console/*.cpp \
+   /f/Projects/01_courses/cpp/VS_C++Project/OpenCV-Image-Processing-and-Compression-Tool-Console/*.h \
+   /f/Projects/01_courses/cpp/VS_C++Project/OpenCV-Image-Processing-and-Compression-Tool-Console/*.sln \
+   /f/Projects/01_courses/cpp/VS_C++Project/OpenCV-Image-Processing-and-Compression-Tool-Console/*.vcxproj* \
    legacy/vs-console/
 ```
 
@@ -1365,14 +1365,14 @@ the originals must stay where they are. Copy them instead of moving them:
 
 ```bash
 mkdir -p tests/legacy
-cp /f/Projects/01_courses/cpp/VS_C++Project/test_openCV/Compress_gray.h \
-   /f/Projects/01_courses/cpp/VS_C++Project/test_openCV/Compress_gray.cpp \
-   /f/Projects/01_courses/cpp/VS_C++Project/test_openCV/Bits.h \
-   /f/Projects/01_courses/cpp/VS_C++Project/test_openCV/Bits.cpp \
-   /f/Projects/01_courses/cpp/VS_C++Project/test_openCV/Block.h \
-   /f/Projects/01_courses/cpp/VS_C++Project/test_openCV/Block.cpp \
-   /f/Projects/01_courses/cpp/VS_C++Project/test_openCV/RBlock.h \
-   /f/Projects/01_courses/cpp/VS_C++Project/test_openCV/RBlock.cpp \
+cp /f/Projects/01_courses/cpp/VS_C++Project/OpenCV-Image-Processing-and-Compression-Tool-Console/Compress_gray.h \
+   /f/Projects/01_courses/cpp/VS_C++Project/OpenCV-Image-Processing-and-Compression-Tool-Console/Compress_gray.cpp \
+   /f/Projects/01_courses/cpp/VS_C++Project/OpenCV-Image-Processing-and-Compression-Tool-Console/Bits.h \
+   /f/Projects/01_courses/cpp/VS_C++Project/OpenCV-Image-Processing-and-Compression-Tool-Console/Bits.cpp \
+   /f/Projects/01_courses/cpp/VS_C++Project/OpenCV-Image-Processing-and-Compression-Tool-Console/Block.h \
+   /f/Projects/01_courses/cpp/VS_C++Project/OpenCV-Image-Processing-and-Compression-Tool-Console/Block.cpp \
+   /f/Projects/01_courses/cpp/VS_C++Project/OpenCV-Image-Processing-and-Compression-Tool-Console/RBlock.h \
+   /f/Projects/01_courses/cpp/VS_C++Project/OpenCV-Image-Processing-and-Compression-Tool-Console/RBlock.cpp \
    tests/legacy/
 ```
 

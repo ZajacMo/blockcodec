@@ -277,6 +277,38 @@ per channel instead, since all four corners are the same pixel.
 The block count is stored in the header, so the decoder knows exactly how
 many blocks to read and never has to guess where the payload ends.
 
+### 7.1 How the decoder knows where the payload ends
+
+This deserves stating explicitly, because it is the part a reimplementation is
+most likely to get wrong.
+
+The payload is self-delimiting. `block_count` says how many blocks follow,
+and every block has a size that is fully determined by the header: the field
+widths follow from `rows` and `cols`, and the corner samples are four values
+per channel, or one value per channel for a single-pixel block. A decoder
+therefore computes the exact bit position at which the payload ends and never
+reads the padding.
+
+The final byte is zero padded to a byte boundary. That padding is not part of
+the data and is never read, because the decoder stops after `block_count`
+blocks.
+
+A decoder must reject a container whose payload is shorter than
+`block_count` blocks require, and one whose padding contains non-zero bits.
+Both are corrupt files, and both must raise an error rather than decode into
+a partial image.
+
+### 7.2 Byte and bit order
+
+- Every multi-byte integer in the header is **little-endian**.
+- Within the payload, the **most significant bit comes first** in each byte.
+- The payload is **not** aligned to any boundary. A field that follows another
+  starts at the very next bit.
+- The final byte is **zero padded** to a byte boundary.
+
+These four rules are what an independent implementation needs to reproduce
+the stream exactly.
+
 ## 8. Defects to fix
 
 These were found by reading the code and are not optional cleanups; an
