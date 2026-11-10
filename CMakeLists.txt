@@ -151,6 +151,16 @@ if(BUILD_TESTING)
     add_test(NAME test_codec COMMAND test_codec
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+    add_executable(test_metrics tests/unit/test_metrics.cpp)
+    target_link_libraries(test_metrics PRIVATE blockcodec gtest_main)
+    add_test(NAME test_metrics COMMAND test_metrics
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    add_executable(test_robustness tests/unit/test_robustness.cpp)
+    target_link_libraries(test_robustness PRIVATE blockcodec gtest_main)
+    add_test(NAME test_robustness COMMAND test_robustness
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
     # The golden test compares the new codec against the legacy
     # implementation, which is kept as an oracle. The legacy sources include
     # windows.h, so the oracle only exists on Windows and the test is
