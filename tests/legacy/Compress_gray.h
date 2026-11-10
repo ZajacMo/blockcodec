@@ -67,6 +67,10 @@ public:
     // Compressed size divided by the raw size
     double getRate()const;
 
+    // The blocks found by the last encode. Exposed so the golden test can
+    // compare the block structure with the new implementation.
+    const std::vector<RBlock>& blocks() const { return allBlocks; }
+
 protected:
 
     // Image dimensions (cols already includes the channel count)
