@@ -30,49 +30,36 @@ int bits_for(int maximum) {
     return bits;
 }
 
-// Reads the four corner samples of the block at `lt` .. `rb`.
+// The block spanning `lt` .. `rb`, with its corners read from the image.
 //
-// The samples are ordered top-left, top-right, bottom-left, bottom-right,
-// and each pixel contributes one sample per channel.
-std::vector<std::uint8_t> read_corners(const cv::Mat& image, cv::Point lt,
-                                        cv::Point rb) {
-    const int channels = image.channels();
-    std::vector<std::uint8_t> corners;
-    corners.reserve(static_cast<std::size_t>(channels) * 4);
-
-    // The corners are ordered top-left, top-right, bottom-left, bottom-right.
-    const int columns[4] = {lt.x, rb.x, lt.x, rb.x};
-    const int rows[4] = {lt.y, lt.y, rb.y, rb.y};
-    for (int i = 0; i < 4; ++i) {
-        for (int c = 0; c < channels; ++c) {
-            corners.push_back(
-                static_cast<std::uint8_t>(sample_at(image, rows[i], columns[i], c)));
-        }
-    }
-    return corners;
+// The block test compares the pixels against the interpolation of the corner
+// samples, so a candidate block is only meaningful once its corners are
+// known.
+RBlock candidate_block(const cv::Mat& image, cv::Point lt, cv::Point rb) {
+    return RBlock(lt, rb, read_corners(image, lt, rb));
 }
 
 // Finds the bottom right corner of the block that starts at `lt`.
 cv::Point find_rb(const cv::Mat& image, const char* marked, int rows, int cols,
-                   int channels, cv::Point lt, int sigma) {
+                   cv::Point lt, int sigma) {
     cv::Point rb = lt;
 
     // Extend along the diagonal first.
     while (rb.x + 1 < cols && rb.y + 1 < rows &&
-           RBlock(lt, cv::Point(rb.x + 1, rb.y + 1), channels)
+           candidate_block(image, lt, cv::Point(rb.x + 1, rb.y + 1))
                .is_block(image, marked, rows, cols, sigma)) {
         ++rb.x;
         ++rb.y;
     }
     // Then along the columns.
     while (rb.x + 1 < cols &&
-           RBlock(lt, cv::Point(rb.x + 1, rb.y), channels)
+           candidate_block(image, lt, cv::Point(rb.x + 1, rb.y))
                .is_block(image, marked, rows, cols, sigma)) {
         ++rb.x;
     }
     // Then along the rows.
     while (rb.y + 1 < rows &&
-           RBlock(lt, cv::Point(rb.x, rb.y + 1), channels)
+           candidate_block(image, lt, cv::Point(rb.x, rb.y + 1))
                .is_block(image, marked, rows, cols, sigma)) {
         ++rb.y;
     }
@@ -117,10 +104,9 @@ std::vector<std::uint8_t> Codec::compress(const cv::Mat& source,
 
             const cv::Point lt(column, row);
             const cv::Point rb =
-                find_rb(source, marked.data(), rows, cols, channels, lt, sigma);
+                find_rb(source, marked.data(), rows, cols, lt, sigma);
 
-            RBlock block(lt, rb, channels);
-            block.set_corners(read_corners(source, lt, rb));
+            RBlock block(lt, rb, read_corners(source, lt, rb));
 
             blocks.push_back(block);
             block.mark(marked.data(), rows, cols);

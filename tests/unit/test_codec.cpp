@@ -30,6 +30,20 @@ cv::Mat make_gradient(int rows, int cols, int channels) {
     return image;
 }
 
+// An image whose three channels hold the same values.
+cv::Mat make_flat_colour(int rows, int cols) {
+    cv::Mat image(rows, cols, CV_8UC3);
+    for (int y = 0; y < rows; ++y) {
+        for (int x = 0; x < cols; ++x) {
+            const uchar value = static_cast<uchar>((x * 3 + y * 5) & 0xFF);
+            for (int c = 0; c < 3; ++c) {
+                image.ptr<uchar>(y)[x * 3 + c] = value;
+            }
+        }
+    }
+    return image;
+}
+
 }  // namespace
 
 TEST(Codec, RoundTripsGreyscale) {
@@ -86,6 +100,27 @@ TEST(Codec, KeepsLandscapeGreyscaleGreyscale) {
     EXPECT_EQ(decoded.cols, 256);
     EXPECT_EQ(decoded.rows, 128);
     EXPECT_EQ(decoded.channels(), 1u);
+}
+
+TEST(Codec, ColourCostsTheSameAsGreyscale) {
+    // The three channels of this image hold the same values, so the colour
+    // image describes the same picture as the greyscale one and must
+    // compress to the same number of blocks.
+    //
+    // The corner samples are stored per channel, and a block that mixes the
+    // channels up still passes the block test, so the mistake shows up here
+    // as a much larger block count rather than as a failure to decode.
+    const cv::Mat grey = make_gradient(64, 64, 1);
+    const cv::Mat colour = make_flat_colour(64, 64);
+
+    Codec codec;
+    CompressResult grey_result;
+    CompressResult colour_result;
+    codec.compress(grey, &grey_result);
+    codec.compress(colour, &colour_result);
+
+    EXPECT_EQ(colour_result.block_count, grey_result.block_count);
+    EXPECT_NEAR(colour_result.psnr, grey_result.psnr, 1e-6);
 }
 
 TEST(Codec, RejectsAnEmptyImage) {

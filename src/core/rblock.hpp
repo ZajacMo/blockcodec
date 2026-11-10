@@ -7,6 +7,15 @@
 
 namespace blockcodec {
 
+// The four corner samples of the block at `lt` .. `rb`, read from the image.
+//
+// The samples are stored per channel: for each channel, the top-left,
+// top-right, bottom-left and bottom-right samples, in that order. This is
+// the layout `RBlock` reads them back in, and the layout the container
+// format transmits them in.
+std::vector<std::uint8_t> read_corners(const cv::Mat& image, cv::Point lt,
+                                        cv::Point rb);
+
 // A block whose interior is reconstructed by bilinear interpolation between
 // its four corner samples.
 //
@@ -28,9 +37,8 @@ public:
     // Returns true when every pixel inside the block differs from the
     // interpolated value by no more than `sigma`.
     //
-    // The corner samples are read from `image` rather than from the stored
-    // ones, because the block search evaluates a candidate block before its
-    // corners have been recorded.
+    // The corner samples come from the stored ones, so a candidate block
+    // must be constructed with its corners before it is tested.
     bool is_block(const cv::Mat& image, const char* marked,
                   int rows, int cols, int sigma) const override;
 

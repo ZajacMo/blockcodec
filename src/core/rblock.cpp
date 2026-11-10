@@ -26,44 +26,28 @@ double ratio(int a, int b, int i) {
     return static_cast<double>(i - a) / static_cast<double>(b - a);
 }
 
-// The four corner samples of the block, read from the image.
-std::vector<std::uint8_t> corners_from_image(const cv::Mat& image, cv::Point lt,
-                                              cv::Point rb) {
-    const int channels = image.channels();
-    std::vector<std::uint8_t> corners;
-    corners.reserve(static_cast<std::size_t>(channels) * 4);
+}  // namespace
 
+std::vector<std::uint8_t> read_corners(const cv::Mat& image, cv::Point lt,
+                                        cv::Point rb) {
+    const int channels = image.channels();
+    std::vector<std::uint8_t> corners(
+        static_cast<std::size_t>(channels) * 4, 0);
+
+    // The corners are ordered top-left, top-right, bottom-left, bottom-right.
     const int columns[4] = {lt.x, rb.x, lt.x, rb.x};
     const int rows[4] = {lt.y, lt.y, rb.y, rb.y};
-    for (int i = 0; i < 4; ++i) {
-        for (int c = 0; c < channels; ++c) {
-            corners.push_back(
-                static_cast<std::uint8_t>(sample_at(image, rows[i], columns[i], c)));
+
+    // The samples are stored per channel, which is the layout the
+    // interpolation reads them in.
+    for (int c = 0; c < channels; ++c) {
+        for (int i = 0; i < 4; ++i) {
+            corners[static_cast<std::size_t>(c) * 4 + static_cast<std::size_t>(i)] =
+                static_cast<std::uint8_t>(sample_at(image, rows[i], columns[i], c));
         }
     }
     return corners;
 }
-
-// The value of the block at (column, row) for channel `c`, interpolating the
-// given corner samples.
-int interpolated_with(const std::vector<std::uint8_t>& corners, cv::Point lt,
-                       cv::Point rb, int column, int row, int c) {
-    const std::size_t base = static_cast<std::size_t>(c) * 4;
-    const int top_left = corners[base + 0];
-    const int top_right = corners[base + 1];
-    const int bottom_left = corners[base + 2];
-    const int bottom_right = corners[base + 3];
-
-    const double row_ratio = ratio(lt.y, rb.y, row);
-    const double column_ratio = ratio(lt.x, rb.x, column);
-
-    // Interpolate down the left and the right edge first, then across.
-    const int left = interpolate(top_left, bottom_left, row_ratio);
-    const int right = interpolate(top_right, bottom_right, row_ratio);
-    return interpolate(left, right, column_ratio);
-}
-
-}  // namespace
 
 RBlock::RBlock(cv::Point lt, cv::Point rb, int channels)
     : Block(lt, rb, channels),
@@ -73,17 +57,23 @@ RBlock::RBlock(cv::Point lt, cv::Point rb, const std::vector<std::uint8_t>& corn
     : Block(lt, rb, static_cast<int>(corners.size()) / 4), corners_(corners) {}
 
 int RBlock::interpolated(int column, int row, int c) const {
-    return interpolated_with(corners_, lt_, rb_, column, row, c);
+    const std::size_t base = static_cast<std::size_t>(c) * 4;
+    const int top_left = corners_[base + 0];
+    const int top_right = corners_[base + 1];
+    const int bottom_left = corners_[base + 2];
+    const int bottom_right = corners_[base + 3];
+
+    const double row_ratio = ratio(lt_.y, rb_.y, row);
+    const double column_ratio = ratio(lt_.x, rb_.x, column);
+
+    // Interpolate down the left and the right edge first, then across.
+    const int left = interpolate(top_left, bottom_left, row_ratio);
+    const int right = interpolate(top_right, bottom_right, row_ratio);
+    return interpolate(left, right, column_ratio);
 }
 
 bool RBlock::is_block(const cv::Mat& image, const char* marked,
                        int rows, int cols, int sigma) const {
-    // The corner samples come from the image, not from the stored ones: the
-    // block search evaluates a candidate block before its corners have been
-    // recorded.
-    const std::vector<std::uint8_t> corners =
-        corners_from_image(image, lt_, rb_);
-
     for (int y = lt_.y; y <= rb_.y; ++y) {
         for (int x = lt_.x; x <= rb_.x; ++x) {
             if (marked[static_cast<std::size_t>(y) * cols + x]) {
@@ -95,7 +85,7 @@ bool RBlock::is_block(const cv::Mat& image, const char* marked,
             // same rule as the greyscale implementation.
             int largest = 0;
             for (int c = 0; c < channels_; ++c) {
-                const int expected = interpolated_with(corners, lt_, rb_, x, y, c);
+                const int expected = interpolated(x, y, c);
                 const int actual = sample_at(image, y, x, c);
                 largest = std::max(largest, std::abs(actual - expected));
             }
