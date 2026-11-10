@@ -90,3 +90,12 @@ cmake-build-*/
 /legacy/vs-console/Release/
 /legacy/vs-console/x64/
 /legacy/vs-console/*.exe
+
+# Benchmark output. The tables are measured again for the release notes, so
+# the files of a local run are not versioned.
+/bench.csv
+/bench_jpeg.csv
+/bench_matched.csv
+/bench_output.txt
+/bench_test*.csv
+/bench_test*.txt

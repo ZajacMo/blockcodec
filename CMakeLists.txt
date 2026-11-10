@@ -72,6 +72,16 @@ target_include_directories(blockcodec_cli PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/ap
 target_link_libraries(blockcodec_cli PRIVATE blockcodec CLI11::CLI11)
 
 # ---------------------------------------------------------------------------
+# blockcodec_bench - the benchmark with a JPEG baseline
+# ---------------------------------------------------------------------------
+add_executable(blockcodec_bench
+    bench/bench_main.cpp
+    bench/jpeg_baseline.cpp
+)
+target_include_directories(blockcodec_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(blockcodec_bench PRIVATE blockcodec)
+
+# ---------------------------------------------------------------------------
 # legacy_codec - the previous implementation, kept for the GUI and as the
 # oracle of the golden regression test. It is removed once the GUI has been
 # migrated and the golden test has served its purpose.
@@ -186,6 +196,17 @@ if(BUILD_TESTING)
     target_link_libraries(test_metrics PRIVATE blockcodec gtest_main)
     add_test(NAME test_metrics COMMAND test_metrics
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # The benchmark test drives the executable, so it is registered after
+    # the target it runs. The path of the executable is passed at run time,
+    # because it is only known once the build has finished.
+    add_executable(test_bench tests/bench/test_bench.cpp)
+    add_dependencies(test_bench blockcodec_bench)
+    target_link_libraries(test_bench PRIVATE blockcodec gtest_main)
+    add_test(NAME test_bench COMMAND test_bench
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(test_bench PROPERTIES
+        ENVIRONMENT "BLOCKCODEC_BENCH=$<TARGET_FILE:blockcodec_bench>")
 
     add_executable(test_robustness tests/unit/test_robustness.cpp)
     target_link_libraries(test_robustness PRIVATE blockcodec gtest_main)
