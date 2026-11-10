@@ -1830,6 +1830,19 @@ cv::Mat Codec::decompress(const std::vector<std::uint8_t>& container,
 
     cv::Mat image(rows, cols, CV_8UC(channels), cv::Scalar(0));
 
+    // The number of bits one block occupies: the four position fields and
+    // the corner samples.
+    const int sample_bits = 8;
+    const int block_bits = row_bits + column_bits + 2 * extent_bits +
+                           sample_bits * channels * 4;
+    const std::size_t required_bits =
+        static_cast<std::size_t>(header.block_count) * block_bits;
+
+    if (reader.bit_count() < required_bits) {
+        throw std::runtime_error(
+            "blockcodec: the payload is shorter than the declared blocks require");
+    }
+
     for (std::uint32_t i = 0; i < header.block_count; ++i) {
         const int start_row = static_cast<int>(reader.read(row_bits));
         const int start_column = static_cast<int>(reader.read(column_bits));
@@ -1851,6 +1864,16 @@ cv::Mat Codec::decompress(const std::vector<std::uint8_t>& container,
 
         RBlock block(lt, rb, corners);
         block.restore(image);
+    }
+
+    // The bits after the last block are padding and must be zero. The
+    // specification requires this check, so that a corrupted file is
+    // rejected rather than silently accepted.
+    while (!reader.exhausted()) {
+        if (reader.read_bit()) {
+            throw std::runtime_error(
+                "blockcodec: the padding bits after the last block are not zero");
+        }
     }
 
     if (result != nullptr) {
