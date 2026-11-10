@@ -363,11 +363,23 @@ single instruction with a different rounding, and MSVC does not fuse it. The
 difference is invisible in most expressions and would be invisible here
 too, if the truncation did not make it visible.
 
-The check is exhaustive: over all pairs of corner samples in `0..255` and
-all 1/64ths to 64/64ths of the way between them, 140509184 cases, the
-contracted and the uncontracted evaluation agree in every one. Both GCC 13
-and MSVC 19.44 were measured. A conforming implementation must not fuse the
-multiply and the addition, and must truncate at the two points named above.
+The check is exhaustive, and it has to use the rates the codec actually
+produces. Those are `n/d` for an arbitrary extent `d`. A sweep over
+`n/64` proves nothing, because every such rate is exactly representable as
+a double and the two evaluations can never differ. Sweeping the real
+rates, the contracted and the uncontracted evaluation differ in 79763 of
+140509184 cases.
+
+The rule is therefore stated as a value rather than as a prohibition, so
+that an implementation in a language which cannot express the prohibition
+still gets it right. The rate is the double nearest to `n/d`, the product
+and the sum are each rounded to the nearest double, and the result is
+truncated towards zero into `0..255`. This is not exact rational
+arithmetic, and the two differ in many cases.
+
+The value is stable across compilers: GCC 13 with `-ffp-contract=fast`,
+with `-ffp-contract=off`, with `-O0`, with `-march=native`, and MSVC
+19.44 all agree on every one of the 140509184 cases.
 
 ### 7.4 Byte and bit order
 

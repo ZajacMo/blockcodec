@@ -227,10 +227,43 @@ The second point needs checking rather than assuming. It is invisible in
 most expressions and would be invisible here too, if the truncation did not
 make it visible.
 
-The check is exhaustive: over all pairs of corner samples in `0..255` and
-all the fractions `n/64` for `n` in `0..64`, 140509184 cases, the contracted
-and the uncontracted evaluation agree in every one. Both GCC 13 and MSVC
-19.44 were measured.
+The check is exhaustive, and it has to use the rates the codec actually
+produces. Those are `n/d` for an arbitrary extent `d`, not for a fixed
+denominator. A sweep over `n/64` proves nothing: every such rate is exactly
+representable as a double, so the product is exact and the two evaluations
+can never differ. Sweeping the real rates instead, over all pairs of corner
+samples in `0..255` and all the fractions `n/d` for `d` in `1..64`, the
+contracted and the uncontracted evaluation differ in 79763 of 140509184
+cases. The first is `a = 5`, `b = 0`, `n = 4`, `d = 5`, where the
+contracted form gives 0 and the uncontracted form gives 1.
+
+So the rule is not optional, and an implementation that contracts the
+multiply and the addition will choose different blocks on some images. The
+rule for an implementation is therefore stated as a **value**, not as a
+prohibition, because a language may not be able to express the prohibition:
+
+1. `rate` is the double nearest to `n/d`.
+2. `product` is the double product of `(b - a)` and `rate`.
+3. `total` is `a + product`, again rounded to the nearest double.
+4. The result is `total` truncated towards zero into `0..255`.
+
+This is **not** exact rational arithmetic. Computing the rate as a rational
+and truncating the exact quotient gives a different answer in many cases,
+because `n/d` is rounded to the nearest double before the multiplication
+happens. The example is `a = 255`, `b = 0`, `n = 1`, `d = 2`, where the
+double form gives 127 and the exact rational gives 128.
+
+The value that this rule produces is stable across compilers. The
+interpolation as implemented above was measured under GCC 13 with
+`-ffp-contract=fast`, with `-ffp-contract=off`, with `-O0`, with
+`-march=native`, and under MSVC 19.44: all five produce the same result for
+every one of the 140509184 cases.
+
+The interpolated value never leaves `0..255`. The rate is in `[0, 1]` and
+the endpoints are bytes, so the result is a convex combination of them. This
+is worth stating, because an implementation that does not know it has to
+choose between wrapping, saturating and erroring, and each choice gives a
+different implementation.
 
 ### 6.2 The block test
 
