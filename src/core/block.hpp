@@ -21,11 +21,11 @@ public:
 
     // Returns true when every pixel inside the block differs from the
     // interpolated value by no more than `sigma`.
-    virtual bool is_block(const cv::Mat& image, const bool* marked,
+    virtual bool is_block(const cv::Mat& image, const char* marked,
                           int rows, int cols, int sigma) const = 0;
 
     // Marks every pixel inside the block as covered.
-    virtual void mark(bool* marked, int rows, int cols) const;
+    virtual void mark(char* marked, int rows, int cols) const;
 
     cv::Point lt() const { return lt_; }
     cv::Point rb() const { return rb_; }

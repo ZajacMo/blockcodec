@@ -1,4 +1,4 @@
-﻿#include "RBlock.h"
+#include "RBlock.h"
 
 RBlock::RBlock() {
 }
@@ -20,51 +20,47 @@ RBlock::RBlock(const cv::Mat& img, const cv::Point lt, const cv::Point rb) :Bloc
 	color[1][1] = img.at<uchar>(rb.x, rb.y);
 }
 
-// Linear interpolation between two colour values.
 inline uchar RBlock::getMedian(const uchar& a, const uchar& b, const double rate) const {
 	return a + (b - a) * rate;
 }
 
-// Position of `i` within the interval [a, b], normalised to [0, 1].
 inline double RBlock::getGamma(const int& a, const int& b, const int& i) const {
 	if (b == a)
 		return 0;
 	return (i - a) / (double)(b - a);
 }
 
-// Decides whether the region spanned by lt..rb can be represented by the
-// bilinear interpolation of its four corner colours, within the tolerance `xgm`.
 bool RBlock::isBlock(const cv::Mat& img, bool** const isMarked, const  int& xgm)const {
-	// Read the four corner colours.
+	// Read the four corner colours
 	uchar point_color[2][3] = { {img.at<uchar>(lt.x, lt.y),					img.at<uchar>(lt.x, rb.y)},
 														{img.at<uchar>(rb.x, lt.y),			img.at<uchar>(rb.x, rb.y) } };
 
-	// Walk every row.
+	// Walk every row of the block
 	for (int i = lt.x; i <= rb.x; i++) {
 
-		// Position of row i between lt.x and rb.x.
+		// Position of row i between lt.x and rb.x, as a 0..1 ratio
 		double gamma_i = getGamma(lt.x, rb.x, i);
 
-		// Interpolate the left edge colour at row i.
+		// Interpolated colour on the left edge of row i
 		point_color[0][2] = getMedian(point_color[0][0], point_color[1][0], gamma_i);
 
-		// Interpolate the right edge colour at row i.
+		// Interpolated colour on the right edge of row i
 		point_color[1][2] = getMedian(point_color[0][1], point_color[1][1], gamma_i);
 
-		// Walk every column.
+		// Walk every column of the block
 		for (int j = lt.y; j <= rb.y; j++) {
 
-			// The pixel is already covered by another block.
+			// A previously encoded pixel cannot be reused
 			if (isMarked[i][j])
 				return false;
 
-			// Position of column j between lt.y and rb.y.
+			// Position of column j between lt.y and rb.y, as a 0..1 ratio
 			double gamma_j = getGamma(lt.y, rb.y, j);
 
-			// Interpolate the expected colour at (i, j).
+			// Bilinearly interpolated colour at (i, j)
 			double gest = getMedian(point_color[0][2], point_color[1][2], gamma_j);
 
-			// Reject the block when a pixel deviates by more than the tolerance.
+			// Reject the block when the pixel deviates too much from the model
 			if (abs(img.at<uchar>(i, j) - gest) > xgm)
 				return false;
 		}
@@ -72,7 +68,6 @@ bool RBlock::isBlock(const cv::Mat& img, bool** const isMarked, const  int& xgm)
 	return true;
 }
 
-// Marks every pixel of the block as covered.
 void RBlock::mark(bool** isMarked) const {
 	for (int i = lt.x; i <= rb.x; i++)
 		for (int j = lt.y; j <= rb.y; j++)
@@ -81,7 +76,6 @@ void RBlock::mark(bool** isMarked) const {
 
 
 
-// Reconstructs the block region from its four corner colours.
 void RBlock::regain(cv::Mat& img, uchar** encoded_img) {
 	if (lt == rb)
 	{
@@ -90,25 +84,25 @@ void RBlock::regain(cv::Mat& img, uchar** encoded_img) {
 	}
 	uchar point_color[2][3] = { {color[0][0], color[0][1]},
 														 {color[1][0], color[1][1]}};
-	// Walk every row.
+	// Walk every row of the block
 	for (int i = lt.x; i <= rb.x; i++) {
 
-		// Position of row i between lt.x and rb.x.
+		// Position of row i between lt.x and rb.x, as a 0..1 ratio
 		double gamma_i = getGamma(lt.x, rb.x, i);
 
-		// Interpolate the left edge colour at row i.
+		// Interpolated colour on the left edge of row i
 		point_color[0][2] = getMedian(point_color[0][0], point_color[1][0], gamma_i);
 
-		// Interpolate the right edge colour at row i.
+		// Interpolated colour on the right edge of row i
 		point_color[1][2] = getMedian(point_color[0][1], point_color[1][1], gamma_i);
 
-		// Walk every column.
+		// Walk every column of the block
 		for (int j = lt.y; j <= rb.y; j++) {
 
-			// Position of column j between lt.y and rb.y.
+			// Position of column j between lt.y and rb.y, as a 0..1 ratio
 			double gamma_j = getGamma(lt.y, rb.y, j);
 
-			// Write the interpolated colour.
+			// Bilinearly interpolated colour at (i, j)
 			img.at<uchar>(i, j) = getMedian(point_color[0][2], point_color[1][2], gamma_j);
 		}
 	}

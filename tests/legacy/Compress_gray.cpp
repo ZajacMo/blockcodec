@@ -1,14 +1,28 @@
-﻿#include "Compress_gray.h"
+#include "Compress_gray.h"
+#include <chrono>
+#include <stdexcept>
+#include <limits>
 
 
 Compress_gray::Compress_gray()
 {
     sigma = 10;
     isMarked = nullptr;
+    encoded_img = nullptr;
+    isNull=true;
 }
 
-// Prepares the encoder (compression).
+// Prepare the encoder for a source image
 void Compress_gray::init_compress(const cv::Mat& imge, const double& sigma_) {
+    // An empty Mat means the caller failed to load the file (cv::imread
+    // returns an empty matrix rather than throwing), so refuse early
+    // instead of producing an empty image.
+    if (imge.empty())
+        throw std::runtime_error("Compress_gray: the source image is empty");
+    if (imge.depth() != CV_8U)
+        throw std::runtime_error("Compress_gray: only 8-bit source images are supported");
+
+    isNull=false;
     sigma = sigma_;
     img = imge;
     rows = img.rows;
@@ -17,40 +31,54 @@ void Compress_gray::init_compress(const cv::Mat& imge, const double& sigma_) {
     newMatrix(encoded_img, rows, cols);
 }
 
-// Prepares the decoder (decompression).
+// Prepare the decoder for a compressed file
 void Compress_gray::init_uncompress(const std::string filename, const int& size) {
     data.init(filename, size);
-
-    // Read the image dimensions.
+    isNull = false;
+    // Read the image dimensions
     rows = data.read(16);
     cols = data.read(16);
+    isColorful = (cols>rows?true:false);
 
-    // Colour-image support is not implemented; the stream is grayscale only.
+    // The dimensions come straight out of the file, so a truncated or
+    // corrupt stream would otherwise ask for an arbitrary allocation.
+    // Reject anything that cannot describe a real image.
+    if (rows <= 0 || cols <= 0)
+        throw std::runtime_error("Compress_gray: invalid image dimensions in the compressed file");
+    if (static_cast<long long>(rows) * cols > kMaxPixels)
+        throw std::runtime_error("Compress_gray: compressed file declares an implausible image size");
+
+    // Initialise the working state
     result = cv::Mat::zeros(rows, cols, CV_8UC1);
     sigma = 10;
+    if(isMarked)
+        deleteMatrix(isMarked, rows);
     newMatrix(isMarked, rows, cols, false);
+    if(encoded_img)
+        deleteMatrix(encoded_img, rows);
     newMatrix(encoded_img, rows, cols);
 }
 
-// Destructor; releases the matrices.
+// Destructor, releases the working matrices
 Compress_gray::~Compress_gray()
 {
-    deleteMatrix(isMarked, rows);
-    deleteMatrix(encoded_img, rows);
+    if(isMarked)
+        deleteMatrix(isMarked, rows);
+    if(encoded_img)
+        deleteMatrix(encoded_img, rows);
 }
 
-// Frees a matrix, guarding against double frees.
+// Release a 2D array, avoiding a memory leak
 template<typename t>
 void Compress_gray::deleteMatrix(t**& p, const int& len1) {
     if (p) {
         for (int i = 0; i < len1; i++)
             delete[] p[i];
         delete[] p;
-        p = nullptr;
     }
 }
 
-// Allocates a len1 x len2 matrix and fills it with `init`.
+// Allocate a 2D array
 template<typename t>
 void Compress_gray::newMatrix(t**& p, const int& len1, const int& len2, t init) {
     p = new t * [len1];
@@ -61,24 +89,23 @@ void Compress_gray::newMatrix(t**& p, const int& len1, const int& len2, t init) 
     }
 }
 
-// Returns a reference to the encoding map entry at `p`.
+// Access a cell of the marker matrix
 uchar& Compress_gray::setEncodedImg(cv::Point& p) {
     return encoded_img[p.x][p.y];
 }
 
-// Decides whether `lt` and `rb` are the two opposite corners of a block (decoding).
+// True when (lt, rb) is the diagonal pair of a block (decoder side)
 bool Compress_gray::isPeer(const cv::Point& lt, const cv::Point& rb) {
 
-    // The corner must not already be covered, and must be either a block end (2)
-    // or an untouched pixel (0).
+    // The cell must be unclaimed and must not be an isolated pixel (3) or a block origin (1)
     if (!isMarked[rb.x][rb.y] && (encoded_img[rb.x][rb.y] == 2 || !encoded_img[rb.x][rb.y])) {
 
-        // Walk down the column that contains rb.
+        // Walk the column of rb
         for (int i = lt.x; i < rb.x; i++)
             if (isMarked[i][rb.y] || encoded_img[i][rb.y] && !(lt.x == i && lt.y == rb.y))
                 return false;
 
-        // Walk across the row that contains rb.
+        // Walk the row of rb
         for (int j = lt.y; j < rb.y; j++)
             if (isMarked[rb.x][j] || encoded_img[rb.x][j] && !(lt.x == rb.x && lt.y == j))
                 return false;
@@ -89,19 +116,19 @@ bool Compress_gray::isPeer(const cv::Point& lt, const cv::Point& rb) {
     return false;
 }
 
-// Given the top-left corner, finds the matching bottom-right corner (encoding).
+// Find the bottom-right corner for a given top-left corner (encoder side)
 cv::Point Compress_gray::findRb(const cv::Point& lt) {
     cv::Point rb = lt;
-    // Extend along the diagonal.
+    // Extend along the diagonal
     while (rb.x + 1 < rows && rb.y + 1 < cols &&
            RBlock(lt, cv::Point(rb.x + 1, rb.y + 1)).isBlock(img, isMarked, sigma)) {
         rb.x++;
         rb.y++;
     }
-    // Extend horizontally.
+    // Extend horizontally
     while (rb.y + 1 < cols && RBlock(lt, cv::Point(rb.x, rb.y + 1)).isBlock(img, isMarked, sigma))
         rb.y++;
-    // Extend vertically.
+    // Extend vertically
     while (rb.x + 1 < rows && RBlock(lt, cv::Point(rb.x + 1, rb.y)).isBlock(img, isMarked, sigma))
         rb.x++;
 
@@ -109,70 +136,76 @@ cv::Point Compress_gray::findRb(const cv::Point& lt) {
 }
 
 
-// Given the top-left corner, finds the matching bottom-right corner (decoding).
+// Find the block extent for a given top-left corner (decoder side)
 RBlock Compress_gray::findBlock(const cv::Point& lt, int& blockNum) {
     cv::Point rb = lt;
-    // Isolated pixels (3) have no extent to grow.
+    // Isolated pixels have no extent to recover
     if (encoded_img[lt.x][lt.y] != 3)
     {
-        // Extend horizontally.
+        // Extend horizontally
         while (rb.y + 1 < cols && isPeer(lt, cv::Point(rb.x, rb.y + 1)))
             rb.y++;
-        // Extend vertically.
+        // Extend vertically
         while (rb.x + 1 < rows && isPeer(lt, cv::Point(rb.x + 1, rb.y)))
             rb.x++;
     }
 
-    // Reaching this point with an out-of-range block number means the encoder
-    // and decoder disagree about the block layout.
+    // A failure here means the encoder and decoder disagree
     if (blockNum >= allBlocks.size())
         throw std::runtime_error("blockNum out of range");
 
-    // Update the bottom-right corner of the block being read.
+    // Record the recovered bottom-right corner of the block
     allBlocks[blockNum].rb = rb;
 
-    // Paint the reconstructed pixels into the result image.
+    // Paint the reconstructed pixels back into the image
     allBlocks[blockNum].regain(result, encoded_img);
 
     return allBlocks[blockNum];
 }
 
 
-// Encodes the image into a 0/1/2/3 encoding map.
+
+// Read the monotonic clock (seconds)
+double Compress_gray::now() {
+    using clock = std::chrono::steady_clock;
+    return std::chrono::duration<double>(clock::now().time_since_epoch()).count();
+}
+
+// Build the block list and the 0/1/2/3 marker matrix
 std::vector<RBlock> Compress_gray::encode() {
     std::vector<RBlock> blocks;
-    // Scan the image.
+    // Walk the image
     for (int i = 0; i < rows; i++)
         for (int j = 0; j < cols; j++)
         {
-            // Skip pixels already covered by an earlier block.
+            // Skip pixels that are already encoded
             if (!isMarked[i][j])
             {
-                // Find the bottom-right corner of the rectangle.
+                // Find the bottom-right corner of the block
                 cv::Point start = cv::Point(i, j), end = findRb(start);
 
-                // Build the block.
+                // Create the block
                 RBlock block(img, start, end);
 
-                // Isolated pixel.
+                // Isolated pixel
                 if (start.x == end.x && start.y == end.y)
                 {
                     setEncodedImg(start) = 3;
                 }
-                // Rectangle: mark the start corner (1) and the end corner (2).
+                // Rectangular block
                 else if (start.x <= end.x && start.y <= end.y)
                 {
                     setEncodedImg(start) = 1;
                     setEncodedImg(end) = 2;
                 }
 
-                // Record the block.
+                // Record the block
                 blocks.push_back(block);
 
-                // Mark the covered region.
+                // Mark the encoded region
                 block.mark(isMarked);
 
-                // Skip to the end of the block to improve scan efficiency.
+                // Skip to the end of the marked region to speed up the scan
                 j = end.y;
             }
         }
@@ -180,32 +213,31 @@ std::vector<RBlock> Compress_gray::encode() {
     return blocks;
 }
 
-
-// Decodes the 0/1/2/3 encoding map.
+// Rebuild the image from the 0/1/2/3 marker matrix
 std::vector<RBlock> Compress_gray::decode() {
 
-    // Decode.
+    // Decode
     std::vector<RBlock> blocks;
     int blockNum = 0;
 
-    // Scan the encoding map.
+    // Walk the marker matrix
     for (int i = 0; i < rows; i++)
         for (int j = 0; j < cols; j++)
         {
-            // Find a pixel that has not been covered yet.
+            // Find the next unclaimed cell
             if (!isMarked[i][j])
             {
-                // Find the bottom-right corner of the rectangle.
+                // Find the bottom-right corner of the block
                 RBlock block = findBlock(cv::Point(i, j), blockNum);
 
-                // Record the block.
+                // Record the block
                 blocks.push_back(block);
 
-                // Mark the covered region.
+                // Mark the reconstructed region
                 block.mark(isMarked);
                 blockNum++;
 
-                // Skip to the end of the block to improve scan efficiency.
+                // Skip to the end of the marked region to speed up the scan
                 j = block.rb.y;
             }
         }
@@ -214,18 +246,25 @@ std::vector<RBlock> Compress_gray::decode() {
 }
 
 
-// Compresses the image into the binary stream.
+// Encode the image into the bitstream
 void Compress_gray::compress()
 {
-    // Record the start time.
-    QueryPerformanceCounter(&time[0]);
+    // Record the start time
+    time[0] = now();
+    //data.write((int)log2(rows), 4);
     data.write(rows, 16);
     data.write(cols, 16);
 
-    // Encode.
+    // Detect whether the source image is colour
+    //if (img.channels() == 3)
+    //    data.add(1);
+    //else
+    //    data.add(0);
+
+    // Build the block list
     allBlocks = encode();
 
-    // Write the encoded image.
+    // Serialise the marker matrix
     for (int i = 0; i < rows; i++)
     {
         int last_position = 0;
@@ -233,12 +272,12 @@ void Compress_gray::compress()
         for (int j = 0; j < cols; j++) {
             int value = encoded_img[i][j];
             if (0 == value) {
-                // This row has no encoded pixels at this position; write a 0 marker.
+                // No encoded pixel on this row: emit a 0
                 if (j == cols - 1)
                     data.add(0);
             }
             else {
-                // This row has an encoded pixel: write a 1 marker, then the code.
+                // This row has an encoded pixel: emit a 1, then the block kind
                 data.add(1);
                 if (1 == value)
                     data.add(1);
@@ -250,30 +289,30 @@ void Compress_gray::compress()
                     data.add(0);
                     data.add(0);
                 }
-                // Compute how many bits the position delta needs.
-                // last_position is an index, so it must be decremented by 1 when it is non-zero.
+                // Number of bits needed for the position delta
+                // last_position is an index, so subtract one extra when the row already has a pixel
                 int b = ceil(log((double)(cols - last_position - !isNull)) / log(2.0));
 
-                // Guard against b being 0.
+                // Guard against a zero-width field
                 if (!b) b++;
 
-                // The position delta.
+                // Compute the position delta
                 int gap = j - last_position - !isNull;
 
-                // The row now contains an encoded pixel.
+                // The row now holds at least one encoded pixel
                 isNull = false;
 
-                // Record the current position.
+                // Record the current position
                 last_position = j;
 
-                // Write the position delta.
+                // Write the position delta as a bit field
                 data.write(gap, b);
 
-                // Write the colours.
-                // An isolated pixel stores a single colour.
+                // Write the pixel colours
+                // An isolated pixel stores a single colour
                 if (value == 3)
                     data.write(img.at<uchar>(i, j), getDepth());
-                // A rectangle stores four colours.
+                // A rectangular block stores four corner colours
                 else if (value == 1) {
                     for (int m = 0; m < allBlocks.size(); m++) {
                         if (allBlocks[m].lt == cv::Point(i, j)) {
@@ -290,21 +329,21 @@ void Compress_gray::compress()
         }
     }
 
-    // Record the end time.
-    QueryPerformanceCounter(&time[1]);
+    // Record the end time
+    time[1] = now();
 }
 
-// Decompresses the binary stream into an image.
+// Decode the bitstream back into an image
 cv::Mat& Compress_gray::uncompress()
 {
-    // Record the start time.
-    QueryPerformanceCounter(&time[0]);
+    // Record the start time
+    time[0] = now();
     bool isNull = true;
-    // Position of the previous encoded pixel, and the value read for it.
+    // Position of the previous non-zero element
     int col = 0, row = 0, value = 0;
     while ( data.readIndex < data.readLen)
     {
-        // Read the row marker.
+        // Read the row-continuation flag
         if (!data.read(1)) {
             row++;
             if (row >= rows)
@@ -320,25 +359,25 @@ cv::Mat& Compress_gray::uncompress()
                 value = (data.read(1)? 2 : 3);
         }
 
-        // Compute how many bits the position delta needs.
+        // Number of bits needed for the position delta
         int b = ceil(log((double)(cols - col - !isNull)) / log(2.0));
         if (!b) b++;
 
-        // Read the position delta.
+        // Read the position delta
         int gap = data.read(b);
 
-        // Compute the absolute position.
+        // Compute the current position
         col += gap + !isNull;
 
-        // The row now contains an encoded pixel.
+        // The row now holds at least one encoded pixel
         isNull = false;
 
-        // Record the value.
+        // Store the marker
         encoded_img[row][col] = value;
 
-        // Read the colours.
+        // Read the pixel colours
         if (value == 3) {
-            // Isolated pixel.
+            // Isolated pixel
             allBlocks.push_back(
                 RBlock(
                     cv::Point(row, col),
@@ -346,7 +385,7 @@ cv::Mat& Compress_gray::uncompress()
                     data.read(getDepth())));
         }
         else if (value == 1) {
-            // Rectangle.
+            // Rectangular block
             uchar** p = nullptr;
             newMatrix(p, 2, 2);
             p[0][0] = data.read(getDepth());
@@ -358,7 +397,7 @@ cv::Mat& Compress_gray::uncompress()
             deleteMatrix(p, 2);
         }
 
-        // If the last pixel of the row was encoded, move to the next row.
+        // The last pixel of the row was encoded: move to the next row
         if (col == (cols - 1))
         {
             row++;
@@ -367,22 +406,34 @@ cv::Mat& Compress_gray::uncompress()
         }
     }
     decode();
-    QueryPerformanceCounter(&time[1]);
+    time[1] = now();
     return result;
 }
 
 
-// Computes the peak signal-to-noise ratio between two images, in dB.
+// Compute the PSNR between two images, in dB.
 double Compress_gray::getPSNR(cv::Mat img1, cv::Mat img2) {
-    double mid = 0;;
+    // The two images must describe the same samples, otherwise the
+    // element-wise comparison below reads out of bounds.
+    if (img1.empty() || img2.empty())
+        throw std::runtime_error("Compress_gray::getPSNR: empty image");
+    if (img1.rows != img2.rows || img1.cols != img2.cols || img1.channels() != img2.channels())
+        throw std::runtime_error("Compress_gray::getPSNR: image dimensions do not match");
+
+    double mid = 0;
     for (int i = 0; i < img1.rows; i++)
         for (int j = 0; j < img1.cols*img1.channels(); j++) {
             mid += pow(img1.at<uchar>(i, j) - img2.at<uchar>(i, j), 2);
         }
+
+    // A perfect reconstruction has zero mean squared error, so the PSNR
+    // is unbounded. Report infinity instead of dividing by zero.
+    if (mid == 0)
+        return std::numeric_limits<double>::infinity();
+
     return 10 * log10f(pow(255., 2) * img1.cols * img1.rows *img1.channels() / mid);
 }
 
-// Returns the bit depth of the source image.
 int Compress_gray::getDepth() {
     switch (img.depth()) {
     case CV_8U:
@@ -397,33 +448,28 @@ int Compress_gray::getDepth() {
     case CV_64F:
         return 64;
     default:
-        return -1; // Unknown or unsupported depth.
+        return -1; // Unknown or unsupported sample depth
     }
 }
 
-// Writes the compressed stream to disk.
 void Compress_gray::save(const std::string& filename) {
     data.save(filename);
 }
 
-// Number of bits read back from disk.
 long long Compress_gray::getReadLen() const {
     return data.readLen;
 }
 
-// Number of bits written to the stream.
 long long Compress_gray::getWriteLen() const {
+    if(data.readLen)
+        return data.readLen;
     return data.vecLen * PERLEN + data.index;
 }
 
-// Wall-clock duration of the last compress()/uncompress() call, in seconds.
 double Compress_gray::getTime() const{
-    LARGE_INTEGER tmp;
-    QueryPerformanceFrequency(&tmp);
-    return (time[1].QuadPart - time[0].QuadPart) * 1.0 / tmp.QuadPart;
+    return time[1] - time[0];
 }
 
-// Compressed size as a fraction of the raw size (lower is better).
 double Compress_gray::getRate()const {
-    return getWriteLen() / (rows * cols * img.channels() * 8.0);
+    return getWriteLen() / (rows * cols  * 8.0);
 }

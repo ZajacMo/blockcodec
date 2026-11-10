@@ -1,109 +1,125 @@
-﻿#pragma once
+#pragma once
 #include "RBlock.h"
 #include "Bits.h"
+
+// The codec is platform-agnostic; only the wall-clock timer needs a
+// platform-specific backend, so keep the Windows header out of the
+// public interface (it would otherwise leak into every translation unit
+// and break the Linux CI build).
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 class Compress_gray
 {
 public:
 
-	// Source image (grayscale, CV_8UC1).
-	cv::Mat img;
+    // Upper bound on the number of pixels a decoded image may declare.
+    // The dimensions are read from the compressed file, so they must be
+    // validated before they are used to size an allocation.
+    static const long long kMaxPixels = 1LL << 28;   // 268 megapixels
 
-	bool isColorful;
+    // Source image
+    cv::Mat img;
+
+    bool isNull;
+
+    bool isColorful;
+
+    // Reconstructed image
+    cv::Mat result;
 
 public:
 
-	// Default constructor.
-	Compress_gray();
+    // Constructor
+    Compress_gray();
 
-	// Prepares the encoder for the given image. `sigma` is the colour tolerance
-	// that decides how aggressively pixels are grouped into blocks.
-	void init_compress(const cv::Mat& imge, const double& sigma_ = 10);
+    // Prepare the encoder for a source image
+    void init_compress(const cv::Mat& imge, const double& sigma_ = 10);
 
-	// Prepares the decoder for a previously saved stream.
-	void init_uncompress(const std::string filename, const int& size = 2);
+    // Prepare the decoder for a compressed file
+    void init_uncompress(const std::string filename, const int& size = 2);
 
-	// Destructor.
-	~Compress_gray();
+    // Destructor
+    ~Compress_gray();
 
-	// Computes the peak signal-to-noise ratio between two images, in dB.
-	static double getPSNR(cv::Mat img1, cv::Mat img2);
+    // Compute the PSNR between two images
+    static double getPSNR(cv::Mat img1, cv::Mat img2);
 
-	// Encodes the image into the internal bit stream.
-	void compress();
+    // Run the encoder
+    void compress();
 
-	// Decodes the internal bit stream back into an image.
-	cv::Mat& uncompress();
+    // Run the decoder
+    cv::Mat& uncompress();
 
-	// Writes the compressed stream to disk.
-	void save(const std::string& filename = "compressed.nam");
+    // Write the compressed bitstream to disk
+    void save(const std::string& filename = "compressed.nam");
 
-	// Number of bits read back from disk.
-	long long getReadLen() const;
+    // Number of bits read back from a compressed file
+    long long getReadLen() const;
 
-	// Number of bits written to the stream.
-	long long getWriteLen() const;
+    // Number of bits produced by the encoder
+    long long getWriteLen() const;
 
-	// Wall-clock duration of the last compress()/uncompress() call, in seconds.
-	double getTime()const;
+    // Elapsed time of the last compress/uncompress call, in seconds
+    double getTime()const;
 
-	// Compressed size as a fraction of the raw size (lower is better).
-	double getRate()const;
-
-protected:
-
-	// Reconstructed image.
-	cv::Mat result;
-
-	// Image dimensions. `cols` already accounts for the channel count.
-	int rows , cols;
-
-	// Per-pixel encoding map: 0 = untouched, 1 = block start, 2 = block end, 3 = isolated pixel.
-	uchar** encoded_img;
-
-	// Bit stream holding the compressed payload.
-	Bits data;
-
-	// Blocks recovered during decoding.
-	std::vector<RBlock> allBlocks;
-
-	// Marks regions already covered by an encoded block.
-	bool** isMarked;
-
-	// Colour tolerance used when deciding whether pixels form a block.
-	int sigma;
-
-	// Timestamps: [0] = start, [1] = end.
-	LARGE_INTEGER time[2];
+    // Compressed size divided by the raw size
+    double getRate()const;
 
 protected:
 
-	// Returns a reference to the encoding map entry at `p`.
-	uchar& setEncodedImg(cv::Point&);
+    // Image dimensions (cols already includes the channel count)
+    int rows , cols;
 
-	// Decides whether `lt` and `rb` are the two opposite corners of a block.
-	bool isPeer(const cv::Point& lt, const cv::Point& rb);
+    // Marker matrix: 0 = unencoded, 1 = block origin, 2 = block end, 3 = isolated pixel
+    uchar** encoded_img;
 
-	// Given the top-left corner, finds the matching bottom-right corner (encoding).
-	cv::Point findRb(const cv::Point& lt);
+    // Bitstream sink/source
+    Bits data;
 
-	// Given the top-left corner, finds the matching bottom-right corner (decoding).
-	RBlock findBlock(const cv::Point& start, int& blockNum);
+    // Blocks reconstructed while decoding
+    std::vector<RBlock> allBlocks;
 
-	// Encodes the image into a list of blocks.
-	std::vector<RBlock> encode();
+    // Marker matrix tracking which pixels have already been encoded
+    bool** isMarked;
 
-	// Decodes the encoding map back into a list of blocks.
-	std::vector<RBlock> decode();
+    // Maximum tolerated deviation when deciding whether a block is valid
+    int sigma;
 
-	// Frees a matrix allocated by newMatrix().
-	template<typename t> void deleteMatrix(t**&, const int& len1);
+    // Timestamps of the last operation, in seconds on a monotonic clock
+    double time[2];
 
-	// Allocates a len1 x len2 matrix and fills it with `init`.
-	template<typename t> void newMatrix(t**&, const int& len1, const int& len2, t init = 0);
+protected:
 
-	// Returns the bit depth of the source image.
-	int getDepth();
+    // Access a cell of the marker matrix
+    uchar& setEncodedImg(cv::Point&);
+
+    // Read the monotonic clock, used to time compress/uncompress
+    static double now();
+
+    // True when (lt, rb) is the diagonal pair of a block (decoder side)
+    bool isPeer(const cv::Point& lt, const cv::Point& rb);
+
+    // Find the bottom-right corner for a given top-left corner (encoder side)
+    cv::Point findRb(const cv::Point& lt);
+
+    // Find the block extent for a given top-left corner (decoder side)
+    RBlock findBlock(const cv::Point& start, int& blockNum);
+
+    // Build the block list and the marker matrix
+    std::vector<RBlock> encode();
+
+    // Rebuild the image from the marker matrix and the block list
+    std::vector<RBlock> decode();
+
+    // Release a 2D array
+    template<typename t> void deleteMatrix(t**&, const int& len1);
+
+    // Allocate a 2D array filled with `init`
+    template<typename t> void newMatrix(t**&, const int& len1, const int& len2, t init = 0);
+
+    // Number of bits used to store one sample of the source image
+    int getDepth();
 };
 

@@ -1,13 +1,9 @@
-﻿#pragma once
+
+#pragma once
 #include <bitset>
 #include <vector>
-#include <fstream>
-#include <string.h>
-#include <cmath>
-#include <stdexcept>
 
-// Number of bits stored in each element of the backing vector.
-#define PERLEN 1024
+#define PERLEN 1024// Number of bits stored per std::bitset chunk
 
 class Bits {
 
@@ -15,44 +11,43 @@ class Bits {
 
 private:
 
-    // Binary payload accumulated during encoding.
+    // Binary payload, stored as a list of fixed-size bitsets
     std::vector<std::bitset<PERLEN>> bits;
 
-    // Binary payload loaded from disk during decoding.
+    // Raw buffer holding the bits loaded from disk (ASCII '0'/'1')
     char* loadedInfo;
 
 protected:
 
-    // Number of filled chunks in `bits`, plus the bit index within the last chunk.
+    // Index of the current bitset chunk and the bit position inside it
     int vecLen, index;
 
-    // Total length (in characters) of the payload read from disk.
+    // Total length (in characters) of the loaded binary text
     long long readLen;
 
-    // Cursor into the payload read from disk.
-    long long readIndex;
+    long long readIndex;   // Cursor into the loaded text
 
 protected:
 
     Bits();
 
-    // Destructor; releases the buffer allocated by init().
+    // Destructor, releases the loaded buffer
     ~Bits();
 
-    // Loads a previously saved payload from disk (used when decoding).
+    // Load a file and initialise the Bits object (used when decompressing)
     void init(const std::string& filename, const int& size = 2);
 
-    // Appends the low `len` bits of `info`, most significant bit first.
+    // Append the low `len` bits of `info`, most significant bit first
     void write(const int& info, const int& len);
 
-    // Appends a single 1 or 0 bit.
+    // Append a single bit to the current chunk
     void add(const std::bitset<1>& bit);
 
-    // Writes the accumulated payload to `filename`.
+    // Write the bitstream to `filename`, one ASCII '0'/'1' character per bit
     void save(const std::string& filename);
 
-    // Reads `len` bits and returns them as an integer, most significant bit first.
-    int read(const int& len);
+    // Read `len` bits and decode them as an unsigned integer
+    int read(  const int& len);
 
 };
 

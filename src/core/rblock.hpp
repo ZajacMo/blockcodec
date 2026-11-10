@@ -25,7 +25,13 @@ public:
     RBlock(cv::Point lt, cv::Point rb, int channels);
     RBlock(cv::Point lt, cv::Point rb, const std::vector<std::uint8_t>& corners);
 
-    bool is_block(const cv::Mat& image, const bool* marked,
+    // Returns true when every pixel inside the block differs from the
+    // interpolated value by no more than `sigma`.
+    //
+    // The corner samples are read from `image` rather than from the stored
+    // ones, because the block search evaluates a candidate block before its
+    // corners have been recorded.
+    bool is_block(const cv::Mat& image, const char* marked,
                   int rows, int cols, int sigma) const override;
 
     // Restores the block into `image`.
@@ -37,7 +43,8 @@ public:
 
     void set_corners(const std::vector<std::uint8_t>& corners) { corners_ = corners; }
 
-    // The value of the block at (column, row) for channel `c`.
+    // The value of the block at (column, row) for channel `c`, by bilinear
+    // interpolation of the four corner samples.
     int interpolated(int column, int row, int c) const;
 
 private:
