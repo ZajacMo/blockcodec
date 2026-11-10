@@ -83,3 +83,10 @@ cmake-build-*/
 # Locally built binaries
 /*.exe
 /build*/**/*.exe
+
+# Visual Studio output, in case legacy/vs-console/ is opened and built
+# in place. The .vcxproj is versioned; its build products are not.
+/legacy/vs-console/Debug/
+/legacy/vs-console/Release/
+/legacy/vs-console/x64/
+/legacy/vs-console/*.exe
