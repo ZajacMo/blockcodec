@@ -72,8 +72,9 @@ This is the single most important difference from the legacy format, whose
 colour layout, 4 when the image carries an alpha channel.
 
 **`depth_bits`** is the number of bits per colour sample. This version
-defines 8. The values 16 and 32 are reserved, and the header validation
-rejects them.
+defines **8 only**, and a container that declares anything else is
+rejected. The payload always carries 8 bit samples, so a container that
+declared a deeper sample would be read at the wrong width.
 
 **`block_count`** is the number of blocks in the payload. The payload is
 self-delimiting, so this is a fact about the format rather than a hint: see
@@ -303,7 +304,7 @@ A decoder **must raise an error** when:
 - `rows` or `cols` is zero;
 - the pixel count exceeds 268435456 (2^28);
 - `channels` is not between 1 and 4;
-- `depth_bits` is not one of the supported values;
+- `depth_bits` is not 8;
 - the payload is shorter than `block_count` blocks require;
 - a block lies outside the image;
 - the padding bits after the last block are not zero.

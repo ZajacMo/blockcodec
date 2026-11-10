@@ -156,12 +156,27 @@ TEST(Format, RejectsAnInvalidHeaderOnWrite) {
     EXPECT_THROW(write_container(header, {0x00}), std::runtime_error);
 }
 
-TEST(Format, AcceptsTheDepthsItSupports) {
-    for (const std::uint8_t depth : {8, 16, 32}) {
-        ContainerHeader header;
-        header.rows = 4;
-        header.cols = 4;
+TEST(Format, AcceptsOnlyTheEightBitDepth) {
+    // The payload always carries 8 bit samples, so a container that declares
+    // a deeper sample would be read at the wrong width.
+    ContainerHeader header;
+    header.rows = 4;
+    header.cols = 4;
+    header.depth_bits = 8;
+    EXPECT_NO_THROW(write_container(header, {0x00}));
+
+    for (const std::uint8_t depth : {16, 32, 24, 0}) {
         header.depth_bits = depth;
-        EXPECT_NO_THROW(write_container(header, {0x00})) << "depth=" << depth;
+        EXPECT_THROW(write_container(header, {0x00}), std::runtime_error)
+            << "depth=" << depth;
     }
+}
+
+TEST(Format, RejectsADeepSampleOnRead) {
+    // The same rule on the reading side: a container that declares 16 bit
+    // samples is rejected rather than decoded at the wrong width.
+    const std::vector<std::uint8_t> container = make_raw_container(4, 4, 1, 16);
+
+    std::vector<std::uint8_t> payload;
+    EXPECT_THROW(read_container(container, payload), std::runtime_error);
 }

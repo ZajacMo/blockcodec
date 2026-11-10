@@ -292,21 +292,17 @@ TEST(Robustness, RejectsRandomBytesBehindAValidHeader) {
 
 TEST(Robustness, TheWriterNeverEmitsAContainerTheReaderRejects) {
     // Every header the writer accepts is a header the reader accepts.
-    for (const std::uint8_t depth : {8, 16, 32}) {
-        ContainerHeader header;
-        header.rows = 4;
-        header.cols = 4;
-        header.depth_bits = depth;
-        header.block_count = 0;
+    ContainerHeader header;
+    header.rows = 4;
+    header.cols = 4;
+    header.depth_bits = 8;
+    header.block_count = 0;
 
-        const std::vector<std::uint8_t> container = write_container(header, {0x00});
-        std::vector<std::uint8_t> payload;
-        EXPECT_NO_THROW(blockcodec::read_container(container, payload))
-            << "depth=" << static_cast<int>(depth);
-    }
+    const std::vector<std::uint8_t> container = write_container(header, {0x00});
+    std::vector<std::uint8_t> payload;
+    EXPECT_NO_THROW(blockcodec::read_container(container, payload));
 
     // And the headers the reader rejects are refused by the writer.
-    ContainerHeader header;
     header.rows = 0;
     header.cols = 4;
     EXPECT_THROW(write_container(header, {0x00}), std::runtime_error);
@@ -318,6 +314,10 @@ TEST(Robustness, TheWriterNeverEmitsAContainerTheReaderRejects) {
 
     header.channels = 1;
     header.depth_bits = 7;
+    EXPECT_THROW(write_container(header, {0x00}), std::runtime_error);
+
+    // The format only defines 8 bit samples.
+    header.depth_bits = 16;
     EXPECT_THROW(write_container(header, {0x00}), std::runtime_error);
 
     header.depth_bits = 8;

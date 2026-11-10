@@ -39,8 +39,10 @@ void validate_header(const ContainerHeader& header) {
         throw std::runtime_error(
             "the container declares an unsupported channel count");
     }
-    if (header.depth_bits != 8 && header.depth_bits != 16 &&
-        header.depth_bits != 32) {
+    // Only 8 bit samples are defined by this version of the format. The
+    // payload always carries 8 bit samples, so a container that declares a
+    // deeper sample would be read at the wrong width.
+    if (header.depth_bits != 8) {
         throw std::runtime_error(
             "the container declares an unsupported colour depth");
     }

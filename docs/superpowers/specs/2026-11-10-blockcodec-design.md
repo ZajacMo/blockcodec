@@ -407,7 +407,7 @@ A decoder **must raise an error** when:
 - `rows` or `cols` is zero;
 - the pixel count exceeds `kMaxPixels`;
 - `channels` is not between 1 and 4;
-- `depth_bits` is not one of the supported values;
+- `depth_bits` is not 8;
 - the payload is shorter than `block_count` blocks require;
 - a block lies outside the image;
 - the padding bits after the last block are not zero.

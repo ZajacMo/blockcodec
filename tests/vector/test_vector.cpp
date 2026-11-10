@@ -15,6 +15,7 @@
 
 #include <opencv2/imgcodecs.hpp>
 
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -82,4 +83,28 @@ TEST(Vector, TheColourVectorIsNotDecodableAsGreyscale) {
     ASSERT_FALSE(colourReference.empty());
 
     EXPECT_NE(greyReference.channels(), colourReference.channels());
+}
+
+TEST(Vector, ToleratesTrailingBytes) {
+    // The specification says a decoder may tolerate trailing bytes after
+    // the payload. The vector with three trailing bytes checks that.
+    const std::string dir = vector_directory();
+
+    std::ifstream in(dir + "/gradient_16x16.bcc", std::ios::binary);
+    ASSERT_TRUE(in.good());
+    const std::vector<std::uint8_t> container((std::istreambuf_iterator<char>(in)),
+                                              std::istreambuf_iterator<char>());
+    ASSERT_FALSE(container.empty());
+
+    std::vector<std::uint8_t> withTrailing = container;
+    withTrailing.push_back(0x00);
+    withTrailing.push_back(0x00);
+    withTrailing.push_back(0x00);
+
+    blockcodec::Codec codec;
+    const cv::Mat decoded = codec.decompress(withTrailing, nullptr);
+
+    EXPECT_EQ(decoded.rows, 16);
+    EXPECT_EQ(decoded.cols, 16);
+    EXPECT_EQ(decoded.channels(), 1);
 }
