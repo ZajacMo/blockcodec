@@ -383,7 +383,17 @@ conditions are therefore checked when writing.
 ## 8. Verifying an implementation
 
 The reference vectors in `tests/vectors/` are what an independent
-implementation is checked against. Each vector is three files:
+implementation is checked against. **Each vector targets one specific class
+of mistake**, and a decoder that is wrong in that way produces a different
+image on that vector and not on the others:
+
+| Vector | The mistake it catches |
+|--------|------------------------|
+| `gradient_16x16` | the block layout and the field widths |
+| `gradient_16x16_colour` | the per-channel order of the corner samples |
+| `truncation_3x16` | the number of roundings in the interpolation |
+
+Each vector is three files:
 
 | File | Purpose |
 |------|---------|
@@ -391,7 +401,8 @@ implementation is checked against. Each vector is three files:
 | `gradient_16x16.bcc` | the container the encoder produces from it |
 | `gradient_16x16_reference.bmp` | the image the container decodes to |
 
-A second, colour one:
+A second, colour one, which catches a decoder that reads the corner
+samples in the wrong order:
 
 | File | Purpose |
 |------|---------|
@@ -399,7 +410,8 @@ A second, colour one:
 | `gradient_16x16_colour.bcc` | its container |
 | `gradient_16x16_colour_reference.bmp` | the image it decodes to |
 
-And a third, which pins the number of roundings:
+And a third, which catches a decoder that truncates only at the end
+rather than after each interpolation:
 
 | File | Purpose |
 |------|---------|
