@@ -9,7 +9,6 @@ out/
 *.so
 *.dylib
 *.dll
-*.exe
 *.pdb
 *.ilk
 *.exp
@@ -81,8 +80,6 @@ __pycache__/
 # CLion's default build directory name
 cmake-build-debug/
 cmake-build-*/
-# Preset build trees
-build/*/
-# Probe and scratch binaries
-*.exe
-!tools/*.exe
+# Locally built binaries
+/*.exe
+/build*/**/*.exe
