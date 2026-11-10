@@ -277,12 +277,13 @@ prohibition. How it is met depends on the language:
 
 === "Rust"
 
-    // The intermediate is stored in a variable, which the compiler may
-    // still fold. A black_box or an explicit rounding step keeps it.
+    // The barriers keep the compiler from fusing the multiply and the add.
+    // Without them the plain form is folded when the target has a fused
+    // multiply-add, and the result then differs from the format.
     fn interpolate(a: u8, b: u8, n: u32, d: u32) -> u8 {
         let rate = (n as f64) / (d as f64);
-        let product = (b as f64 - a as f64) * rate;
-        let total = (a as f64) + product;
+        let product = std::hint::black_box((b as f64 - a as f64) * rate);
+        let total = std::hint::black_box((a as f64) + product);
         // The value is always in 0..255, so the truncation is a cast.
         total as u8
     }
@@ -432,12 +433,25 @@ widths and the per-channel corner layout, and each of them has been checked
 against the mistake it is meant to catch.
 
 Whether a given block distinguishes the two rules is decided by its corner
-values, not by its size. The rules differ only where an intermediate ratio
-is not exactly representable as a double, and the corners decide whether
-the difference survives the truncation. A block of any size may or may not
-distinguish them; no size guarantees it. The two rules therefore agree on
-the first two vectors because of the corner values the encoder happened to
-choose for them, and the third vector was constructed so that they do not.
+values, not by its size.
+
+The two rules differ exactly where truncating one of the two edge
+interpolations to a byte would change it, that is, where that edge value is
+not already an integer. The first rule truncates the left and the right
+edge, and then interpolates across; the second interpolates everything in
+full precision and truncates once. If both edge values are already
+integers, the two procedures are the same, because truncating the edges is
+the only thing the first rule does that the second does not.
+
+Note that this is a statement about the edge **values**, not about the
+ratios that produced them. A ratio such as 7/16 is exactly representable
+as a double and the rules still differ, because the edge value it
+produces is not an integer.
+
+A block of any size may or may not distinguish them; no size guarantees
+it. The two rules therefore agree on the first two vectors because of the
+corner values the encoder happened to choose for them, and the third
+vector was constructed so that they do not.
 
 The third vector is the one to use for the rounding rule, because it was
 constructed for it.
