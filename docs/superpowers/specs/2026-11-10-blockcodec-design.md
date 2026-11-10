@@ -307,7 +307,33 @@ A decoder must reject a container whose payload is shorter than
 Both are corrupt files, and both must raise an error rather than decode into
 a partial image.
 
-### 7.2 Byte and bit order
+### 7.2 The container holds raw facts, not derived quantities
+
+The header carries only facts about the image and the stream: the
+dimensions, the channel count, the colour depth, and the number of blocks.
+It carries **no** compression ratio, no bits-per-pixel figure and no quality
+score.
+
+The reason is that a derived quantity in the header cannot serve as a check.
+An independent decoder reads `bpp` from the header and computes its own
+bits-per-pixel from the payload; the two agreeing proves nothing, because
+they may well be two exits of the same wrong implementation. Worse, if the
+specification leaves it open whether the reader should verify the stored
+value, every implementation has to guess.
+
+So the format stores what the data *is*, and the measurements belong to the
+tools that read the format: the benchmark computes the bits-per-pixel from
+the actual length of the bitstream, and the decoder can do the same. The
+acceptance criterion for an independent implementation is therefore a single,
+unambiguous one — the decoded pixels match the reference exactly.
+
+This is also why the field widths are fixed. The length of the payload is
+then exactly computable from the header, so the bits-per-pixel of a
+container is a *measurement* rather than an estimate. The prototype's `BPP()`
+had to estimate, because its colour samples were not part of the stream it
+measured.
+
+### 7.3 Byte and bit order
 
 - Every multi-byte integer in the header is **little-endian**.
 - Within the payload, the **most significant bit comes first** in each byte.
@@ -318,7 +344,7 @@ a partial image.
 These four rules are what an independent implementation needs to reproduce
 the stream exactly.
 
-### 7.3 What a decoder must reject, and what it may tolerate
+### 7.4 What a decoder must reject, and what it may tolerate
 
 Every rule in this specification states one of two things: whether a decoder
 that finds the condition violated **must raise an error**, or whether it
